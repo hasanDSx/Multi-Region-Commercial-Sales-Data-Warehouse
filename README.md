@@ -72,3 +72,5 @@ BI KPI modeling
 Customer analytics (RFM, churn, CLV)
 
 Supply chain performance
+________________________________________
+Full Report: https://connect.posit.cloud/binmo06/content/019afa5c-032a-0986-6600-6397d645d7e8
