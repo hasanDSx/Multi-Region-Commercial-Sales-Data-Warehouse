@@ -1,5 +1,4 @@
 ## Multi-Region Commercial Sales Data Warehouse
-### `Global Retail & Supply Chain Analytics`
 
 This project provides a complete SQL-driven analytical framework designed for commercial sales, customer behavior, and supply chain insights across multiple regions.
 ________________________________________
@@ -33,7 +32,7 @@ Null & duplicate record checks
 
 Statistics update for better performance
 
-➡️ Result: Clean, efficient, performance-ready environment.
+Result: `Clean`, `efficient`, `performance-ready environment`.
 ________________________________________
 ## Phase 2 — Commercial & Supply Chain Analytics
 
@@ -58,7 +57,7 @@ Market basket cross-selling analysis
 Delivery KPIs: speed, freight %, on-time rate
 
 ➡️ Result: End-to-end analytics for
-Revenue • Customers • Products • Regions • Delivery • Forecasts
+`Revenue` • `Customers` • `Products` • `Regions` • `Delivery` • `Forecasts`
 ________________________________________
 ### Technologies & Skills
 
