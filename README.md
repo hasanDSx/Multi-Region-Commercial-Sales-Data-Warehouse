@@ -1,5 +1,5 @@
 ## Multi-Region Commercial Sales Data Warehouse
-### Global Retail & Supply Chain Analytics
+### `Global Retail & Supply Chain Analytics`
 
 This project provides a complete SQL-driven analytical framework designed for commercial sales, customer behavior, and supply chain insights across multiple regions.
 ________________________________________
