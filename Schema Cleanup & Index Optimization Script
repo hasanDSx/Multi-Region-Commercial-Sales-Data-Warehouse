@@ -1,10 +1,10 @@
-USE AdventureWorksDW2022;
+USE Global_Retail_SupplyChain;
 GO
 
 -- Drop columns and tableas that are no longer needed
 ALTER TABLE dbo.FactInternetSales   DROP COLUMN CarrierTrackingNumber;
 ALTER TABLE dbo.FactInternetSales   DROP COLUMN CustomerPONumber;
-ALTER TABLE dbo.DimEmployee		    DROP COLUMN ParentEmployeeNationalIDAlternateKey;
+ALTER TABLE dbo.DimEmployee         DROP COLUMN ParentEmployeeNationalIDAlternateKey;
 ALTER TABLE dbo.DimEmployee         DROP COLUMN EndDate;
 ALTER TABLE dbo.DimAccount          DROP COLUMN CustomMemberOptions;
 ALTER TABLE dbo.NewFactCurrencyRate DROP COLUMN DateKey;
