@@ -628,19 +628,28 @@ ORDER BY PP.TimesBoughtTogether DESC;
 --------------------------------------------------------------------------------
 
 -- Customer Lifetime Value Prediction & Sales Velocity
-WITH CustomerMetrics AS (
+WITH CustomerOrders AS (
     SELECT 
         C.CustomerKey,
         C.FirstName + ' ' + C.LastName AS CustomerName,
-        DATEDIFF(DAY, MIN(D.FullDateAlternateKey), MAX(D.FullDateAlternateKey)) AS CustomerLifespanDays,
-        COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-        SUM(F.SalesAmount) AS TotalRevenue,
-        AVG(DATEDIFF(DAY, LAG(D.FullDateAlternateKey) OVER (PARTITION BY C.CustomerKey ORDER BY D.FullDateAlternateKey), 
-            D.FullDateAlternateKey)) AS AvgDaysBetweenOrders
+        D.FullDateAlternateKey,
+        F.SalesOrderNumber,
+        F.SalesAmount,
+        LAG(D.FullDateAlternateKey) OVER (PARTITION BY C.CustomerKey ORDER BY D.FullDateAlternateKey) AS PrevOrderDate
     FROM FactInternetSales AS F
     JOIN DimCustomer AS C ON F.CustomerKey = C.CustomerKey
     JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY C.CustomerKey, C.FirstName, C.LastName
+),
+CustomerMetrics AS (
+    SELECT
+        CustomerKey,
+        CustomerName,
+        DATEDIFF(DAY, MIN(FullDateAlternateKey), MAX(FullDateAlternateKey)) AS CustomerLifespanDays,
+        COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
+        SUM(SalesAmount) AS TotalRevenue,
+        AVG(DATEDIFF(DAY, PrevOrderDate, FullDateAlternateKey)) AS AvgDaysBetweenOrders
+    FROM CustomerOrders
+    GROUP BY CustomerKey, CustomerName
 )
 SELECT 
     CustomerName,
@@ -705,67 +714,3 @@ JOIN DimSalesTerritory AS T ON F.SalesTerritoryKey = T.SalesTerritoryKey
 JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
 GROUP BY PC.EnglishProductCategoryName, T.SalesTerritoryRegion, D.CalendarYear
 ORDER BY D.CalendarYear DESC, SUM(F.SalesAmount - F.TotalProductCost) DESC;
-
---------------------------------------------------------------------------------
--- 17. EXECUTIVE DASHBOARD SUMMARY
---------------------------------------------------------------------------------
-
--- Key Performance Indicators Summary
-WITH CurrentYear AS (
-    SELECT 
-        MAX(D.CalendarYear) AS Year,
-        COUNT(DISTINCT F.SalesOrderNumber) AS Orders,
-        COUNT(DISTINCT F.CustomerKey) AS Customers,
-        SUM(F.SalesAmount) AS Revenue,
-        SUM(F.SalesAmount - F.TotalProductCost) AS Profit,
-        AVG(F.SalesAmount) AS AvgOrderValue
-    FROM FactInternetSales AS F
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    WHERE D.CalendarYear = (SELECT MAX(CalendarYear) FROM DimDate WHERE DateKey IN (SELECT OrderDateKey FROM FactInternetSales))
-),
-PreviousYear AS (
-    SELECT 
-        MAX(D.CalendarYear) AS Year,
-        COUNT(DISTINCT F.SalesOrderNumber) AS Orders,
-        COUNT(DISTINCT F.CustomerKey) AS Customers,
-        SUM(F.SalesAmount) AS Revenue,
-        SUM(F.SalesAmount - F.TotalProductCost) AS Profit,
-        AVG(F.SalesAmount) AS AvgOrderValue
-    FROM FactInternetSales AS F
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    WHERE D.CalendarYear = (SELECT MAX(CalendarYear) - 1 FROM DimDate WHERE DateKey IN (SELECT OrderDateKey FROM FactInternetSales))
-)
-SELECT 
-    'Total Orders' AS Metric,
-    FORMAT(CY.Orders, 'N0') AS CurrentYear,
-    FORMAT(PY.Orders, 'N0') AS PreviousYear,
-    FORMAT(((CY.Orders - PY.Orders) * 100.0 / PY.Orders), 'N2') + '%' AS YoYChange
-FROM CurrentYear AS CY, PreviousYear AS PY
-UNION ALL
-SELECT 
-    'Total Customers',
-    FORMAT(CY.Customers, 'N0'),
-    FORMAT(PY.Customers, 'N0'),
-    FORMAT(((CY.Customers - PY.Customers) * 100.0 / PY.Customers), 'N2') + '%'
-FROM CurrentYear AS CY, PreviousYear AS PY
-UNION ALL
-SELECT 
-    'Total Revenue',
-    CONCAT('$ ', FORMAT(CY.Revenue, 'N2')),
-    CONCAT('$ ', FORMAT(PY.Revenue, 'N2')),
-    FORMAT(((CY.Revenue - PY.Revenue) * 100.0 / PY.Revenue), 'N2') + '%'
-FROM CurrentYear AS CY, PreviousYear AS PY
-UNION ALL
-SELECT 
-    'Total Profit',
-    CONCAT('$ ', FORMAT(CY.Profit, 'N2')),
-    CONCAT('$ ', FORMAT(PY.Profit, 'N2')),
-    FORMAT(((CY.Profit - PY.Profit) * 100.0 / PY.Profit), 'N2') + '%'
-FROM CurrentYear AS CY, PreviousYear AS PY
-UNION ALL
-SELECT 
-    'Avg Order Value',
-    CONCAT('$ ', FORMAT(CY.AvgOrderValue, 'N2')),
-    CONCAT('$ ', FORMAT(PY.AvgOrderValue, 'N2')),
-    FORMAT(((CY.AvgOrderValue - PY.AvgOrderValue) * 100.0 / PY.AvgOrderValue), 'N2') + '%'
-FROM CurrentYear AS CY, PreviousYear AS PY;
