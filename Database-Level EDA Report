@@ -1,0 +1,298 @@
+USE Global_Retail_SupplyChain;
+GO
+
+--------------------------------------------------------------------------------
+-- 1. DATABASE GENERAL INFORMATION
+--------------------------------------------------------------------------------
+SELECT
+    D.name AS DatabaseName,
+    DATABASEPROPERTYEX(D.name, 'Status') AS DB_Status,
+    DATABASEPROPERTYEX(D.name, 'Recovery') AS Recovery_Model,
+    DATABASEPROPERTYEX(D.name, 'Updateability') AS Read_Write_Mode,
+    DATABASEPROPERTYEX(D.name, 'CompatibilityLevel') AS Compatibility_Level,
+    DATABASEPROPERTYEX(D.name, 'Collation') AS Collation,
+    D.create_date AS CreatedOn,
+    D.state_desc AS CurrentState,
+    D.compatibility_level,
+    SUM(MF.size) * 8.0 / 1024 AS DatabaseSizeMB
+FROM sys.databases AS D JOIN sys.master_files AS MF
+ON D.database_id = MF.database_id
+WHERE d.name = DB_NAME()
+GROUP BY D.name, D.create_date, D.state_desc, D.compatibility_level;
+
+--------------------------------------------------------------------------------
+-- 2. BACKUP STATUS
+--------------------------------------------------------------------------------
+SELECT 
+    D.name AS DatabaseName,
+    MAX(CASE WHEN B.type = 'D' THEN B.backup_finish_date END) AS LastFullBackup,
+    MAX(CASE WHEN B.type = 'I' THEN B.backup_finish_date END) AS LastDifferentialBackup,
+    MAX(CASE WHEN B.type = 'L' THEN B.backup_finish_date END) AS LastLogBackup,
+    DATEDIFF(DAY, MAX(CASE WHEN B.type = 'D' THEN B.backup_finish_date END), GETDATE()) AS DaysSinceLastFull
+FROM sys.databases AS D LEFT JOIN msdb.dbo.backupset AS B
+ON D.name = B.database_name
+WHERE D.name = DB_NAME()
+GROUP BY D.name;
+
+--------------------------------------------------------------------------------
+-- 3. DATABASE OBJECTS COUNT
+--------------------------------------------------------------------------------
+SELECT
+    SUM(CASE WHEN type = 'U' THEN 1 ELSE 0 END) AS Tables,
+    SUM(CASE WHEN type = 'V' THEN 1 ELSE 0 END) AS Views,
+    SUM(CASE WHEN type = 'P' THEN 1 ELSE 0 END) AS StoredProcedures,
+    SUM(CASE WHEN type = 'TR' THEN 1 ELSE 0 END) AS Triggers,
+    SUM(CASE WHEN type = 'FN' THEN 1 ELSE 0 END) AS ScalarFunctions,
+    SUM(CASE WHEN type = 'TF' THEN 1 ELSE 0 END) AS TableFunctions
+FROM sys.objects
+WHERE is_ms_shipped = 0;
+
+--------------------------------------------------------------------------------
+-- 4. TABLE ROWS AND STORAGE
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    SUM(P.rows) AS RowsCount,
+    SUM(A.total_pages) * 8 / 1024 AS TotalMB,
+    SUM(A.used_pages) * 8 / 1024 AS UsedMB,
+    (SUM(A.total_pages) - SUM(A.used_pages)) * 8 / 1024 AS FreeMB,
+    CAST(
+        CASE
+            WHEN SUM(A.total_pages) > 0 THEN ((SUM(A.total_pages) - SUM(A.used_pages)) * 100.0 / SUM(A.total_pages))
+            ELSE 0 END AS DECIMAL(5,2)
+        ) AS PctFree
+FROM sys.tables AS T JOIN sys.indexes AS I
+ON T.object_id = I.object_id JOIN sys.partitions AS P
+ON I.object_id = P.object_id AND I.index_id = P.index_id JOIN sys.allocation_units AS A
+ON P.partition_id = A.container_id
+WHERE T.name NOT IN ('sysdiagrams', 'DatabaseLog', 'AdventureWorksDWBuildVersion') AND T.is_ms_shipped = 0
+GROUP BY T.name
+ORDER BY RowsCount DESC;
+
+--------------------------------------------------------------------------------
+-- 5. DATABASE INDEXES COUNT
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    SUM(CASE WHEN I.type_desc = 'CLUSTERED' THEN 1 ELSE 0 END) AS ClusteredIndexes,
+    SUM(CASE WHEN I.type_desc = 'NONCLUSTERED' THEN 1 ELSE 0 END) AS NonClusteredIndexes,
+    SUM(CASE WHEN I.is_primary_key = 1 THEN 1 ELSE 0 END) AS PrimaryKeys,
+    SUM(CASE WHEN I.is_unique = 1 AND I.is_primary_key = 0 THEN 1 ELSE 0 END) AS UniqueIndexes
+FROM sys.tables AS T LEFT JOIN sys.indexes AS I
+ON T.object_id = I.object_id
+WHERE T.is_ms_shipped = 0 AND T.name NOT IN ('AdventureWorksDWBuildVersion', 'DatabaseLog', 'sysdiagrams')
+GROUP BY T.name
+ORDER BY TableName;
+
+--------------------------------------------------------------------------------
+-- 6. INDEXES AND USAGE STATISTICS
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS Table_Name,
+    I.name AS Index_Name,
+    I.type_desc AS Index_Type,
+    I.is_primary_key AS IsPK,
+    I.is_unique AS IsUnique,
+    CASE I.is_disabled WHEN 1 THEN 'Disabled' ELSE 'Enabled' END AS Status,
+    ISNULL(IUS.user_seeks, 0) AS User_Seeks,
+    ISNULL(IUS.user_scans, 0) AS User_Scans,
+    ISNULL(IUS.user_lookups, 0) AS User_Lookups,
+    ISNULL(IUS.user_updates, 0) AS User_Updates,
+    ISNULL(IUS.user_seeks, 0) + ISNULL(IUS.user_scans, 0) + ISNULL(IUS.user_lookups, 0) AS TotalReads,
+    IUS.last_user_seek AS Last_Seek,
+    IUS.last_user_scan AS Last_Scan
+FROM sys.indexes AS I JOIN sys.tables AS T
+ON I.object_id = T.object_id  LEFT JOIN sys.dm_db_index_usage_stats AS IUS
+ON IUS.object_id = i.object_id AND IUS.index_id = I.index_id AND IUS.database_id = DB_ID()
+WHERE I.name IS NOT NULL AND T.name NOT IN ('sysdiagrams', 'DatabaseLog') AND T.is_ms_shipped = 0
+ORDER BY T.name, TotalReads DESC;
+
+--------------------------------------------------------------------------------
+-- 7. UNUSED INDEXES
+--------------------------------------------------------------------------------
+SELECT 
+    OBJECT_NAME(I.object_id) AS TableName,
+    I.name AS IndexName,
+    I.type_desc AS IndexType,
+    ISNULL(S.user_updates, 0) AS Updates
+FROM sys.indexes AS I LEFT JOIN sys.dm_db_index_usage_stats AS S
+ON I.object_id = S.object_id AND I.index_id = S.index_id AND S.database_id = DB_ID()
+WHERE
+    I.type_desc IN ('CLUSTERED', 'NONCLUSTERED')
+    AND I.is_primary_key = 0
+    AND I.is_unique_constraint = 0
+    AND OBJECTPROPERTY(I.object_id, 'IsUserTable') = 1
+    AND ISNULL(S.user_seeks + S.user_scans + S.user_lookups, 0) = 0
+ORDER BY TableName, IndexName;
+
+--------------------------------------------------------------------------------
+-- 8. DUPLICATE/REDUNDANT INDEXES
+--------------------------------------------------------------------------------
+WITH IndexColumns AS (
+    SELECT 
+        T.name AS TableName,
+        I.name AS IndexName,
+        I.index_id,
+        I.type_desc,
+        STRING_AGG(C.name, ', ') WITHIN GROUP (ORDER BY IC.key_ordinal) AS IndexedColumns
+    FROM sys.indexes AS I JOIN sys.tables AS T
+    ON I.object_id = T.object_id JOIN sys.index_columns AS IC
+    ON I.object_id = IC.object_id AND I.index_id = IC.index_id JOIN sys.columns AS C
+    ON IC.object_id = C.object_id AND IC.column_id = C.column_id
+    WHERE I.type > 0
+      AND I.is_primary_key = 0
+      AND I.is_unique_constraint = 0
+      AND T.is_ms_shipped = 0
+    GROUP BY T.name, I.name, I.index_id, I.type_desc
+)
+SELECT 
+    I1.TableName,
+    I1.IndexName AS Index1,
+    I2.IndexName AS Index2,
+    I1.IndexedColumns,
+    I1.type_desc AS Index1Type,
+    I2.type_desc AS Index2Type
+FROM IndexColumns AS I1 JOIN IndexColumns AS I2
+ON I1.TableName = I2.TableName AND I1.IndexedColumns = I2.IndexedColumns AND I1.index_id < I2.index_id
+ORDER BY I1.TableName;
+
+--------------------------------------------------------------------------------
+-- 9. INDEX FRAGMENTATION ANALYSIS
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    I.name AS IndexName,
+    IPS.avg_fragmentation_in_percent,
+    IPS.page_count,
+    CASE 
+        WHEN IPS.avg_fragmentation_in_percent > 30 THEN 'REBUILD recommended'
+        WHEN IPS.avg_fragmentation_in_percent > 10 THEN 'REORGANIZE recommended'
+        ELSE 'OK'
+    END AS Recommendation
+FROM sys.dm_db_index_physical_stats(DB_ID(), NULL, NULL, NULL, 'LIMITED') AS ips JOIN sys.indexes AS I
+ON IPS.object_id = I.object_id AND IPS.index_id = I.index_id JOIN sys.tables AS T
+ON I.object_id = T.object_id
+WHERE IPS.page_count > 100
+ORDER BY IPS.avg_fragmentation_in_percent DESC;
+
+--------------------------------------------------------------------------------
+-- 10. FOREIGN KEY RELATIONSHIPS
+--------------------------------------------------------------------------------
+SELECT 
+    FK.name AS FK_Name,
+    TP.name AS Parent_Table,
+    CP.name AS Parent_Column,
+    TR.name AS Referenced_Table,
+    CR.name AS Referenced_Column,
+    CASE FK.is_disabled WHEN 1 THEN 'Disabled' ELSE 'Enabled' END AS Status
+FROM sys.foreign_keys FK JOIN sys.foreign_key_columns AS FKC
+ON FKC.constraint_object_id = FK.object_id JOIN sys.tables AS TP
+ON FKC.parent_object_id = TP.object_id JOIN sys.columns AS CP
+ON FKC.parent_column_id = CP.column_id AND CP.object_id = TP.object_id JOIN sys.tables AS TR
+ON FKC.referenced_object_id = TR.object_id JOIN sys.columns AS CR
+ON FKC.referenced_column_id = CR.column_id AND CR.object_id = TR.object_id
+ORDER BY Parent_Table, FK_Name;
+
+--------------------------------------------------------------------------------
+-- 11. DATA TYPE ANALYSIS
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    C.name AS ColumnName,
+    TY.name AS DataType,
+    C.max_length AS MaxLength,
+    C.precision AS Precision,
+    C.scale AS Scale,
+    CASE C.is_nullable WHEN 1 THEN 'YES' ELSE 'NO' END AS IsNullable,
+    CASE 
+        WHEN TY.name IN ('varchar', 'nvarchar', 'char', 'nchar') AND c.max_length = -1 THEN 'Review: MAX length'
+        WHEN TY.name IN ('varchar', 'nvarchar', 'char', 'nchar') AND c.max_length > 2000 THEN 'Review: Large length'
+        WHEN TY.name IN ('text', 'ntext', 'image') THEN 'Deprecated: Use varchar(max), nvarchar(max), varbinary(max)'
+        ELSE 'OK'
+    END AS Recommendation
+FROM sys.tables AS T JOIN sys.columns AS C
+ON T.object_id = C.object_id JOIN sys.types AS TY
+ON C.user_type_id = TY.user_type_id
+WHERE T.is_ms_shipped = 0 AND T.name NOT IN ('sysdiagrams', 'DatabaseLog', 'AdventureWorksDWBuildVersion')
+ORDER BY T.name, C.column_id;
+
+--------------------------------------------------------------------------------
+-- 12. NULL VALUES ANALYSIS
+--------------------------------------------------------------------------------
+DECLARE @sql NVARCHAR(MAX) = '';
+SELECT @sql = @sql +
+     'SELECT ''' + S.name + '.' + T.name + ''' AS TableName,
+     ''' + C.name + ''' AS ColumnName,
+     SUM(CASE WHEN ' + QUOTENAME(C.name) + ' IS NULL THEN 1 ELSE 0 END) AS NullCount,
+     COUNT(*) AS TotalRows,
+     CAST(SUM(CASE WHEN ' + QUOTENAME(C.name) + ' IS NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS DECIMAL(10,2)) AS PctNull
+FROM ' + QUOTENAME(S.name) + '.' + QUOTENAME(T.name) + '
+HAVING SUM(CASE WHEN ' + QUOTENAME(C.name) + ' IS NULL THEN 1 ELSE 0 END) > 0
+UNION ALL '
+FROM sys.tables AS T JOIN sys.schemas AS S
+ON T.schema_id = S.schema_id JOIN sys.columns AS C
+ON T.object_id = C.object_id
+WHERE T.is_ms_shipped = 0  AND T.name NOT IN ('sysdiagrams', 'DatabaseLog');
+
+SET @sql = LEFT(@sql, LEN(@sql) - 11) + ' ORDER BY PctNull DESC';
+EXEC sp_executesql @sql;
+GO
+
+--------------------------------------------------------------------------------
+-- 13. DUPLICATE ROWS ANALYSIS
+--------------------------------------------------------------------------------
+DECLARE @sql NVARCHAR(MAX) = '';
+SELECT @sql = @sql +
+'SELECT ''' + S.name + '.' + T.name + ''' AS TableName, SUM(dup_count - 1) AS DuplicateRows
+FROM (
+    SELECT COUNT(*) AS dup_count
+    FROM ' + QUOTENAME(S.name) + '.' + QUOTENAME(T.name) + '
+    GROUP BY ' + STRING_AGG(QUOTENAME(C.name), ', ') + '
+    HAVING COUNT(*) > 1
+) AS sub
+UNION ALL '
+FROM sys.tables AS T JOIN sys.schemas AS S
+ON T.schema_id = S.schema_id JOIN sys.columns AS C
+ON T.object_id = C.object_id JOIN sys.types AS TY
+ON C.user_type_id = TY.user_type_id
+WHERE T.is_ms_shipped = 0 AND TY.name NOT IN ('xml', 'text', 'ntext', 'image')
+GROUP BY S.name, T.name;
+
+SET @sql = LEFT(@sql, LEN(@sql) - 10);
+EXEC sp_executesql @sql;
+
+--------------------------------------------------------------------------------
+-- 14. COLUMNS WITH DEFAULT VALUES
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    C.name AS ColumnName,
+    D.definition AS DefaultValue
+FROM sys.tables AS T JOIN sys.columns AS C
+ON T.object_id = C.object_id LEFT JOIN sys.default_constraints AS D
+ON C.default_object_id = D.object_id
+WHERE T.is_ms_shipped = 0 AND D.definition IS NOT NULL
+ORDER BY T.name, C.column_id;
+
+--------------------------------------------------------------------------------
+-- 15. NON-INDEXED COLUMNS
+--------------------------------------------------------------------------------
+SELECT 
+    T.name AS TableName,
+    C.name AS ColumnName
+FROM sys.tables AS T JOIN sys.columns AS C
+ON T.object_id = C.object_id LEFT JOIN sys.index_columns AS IC
+ON C.object_id = IC.object_id AND C.column_id = IC.column_id
+WHERE T.is_ms_shipped = 0 AND IC.column_id IS NULL
+ORDER BY T.name, C.column_id;
+
+--------------------------------------------------------------------------------
+-- 16. UPDATE STATISTICS
+--------------------------------------------------------------------------------
+EXEC sp_updatestats;
+
+PRINT '';
+PRINT '========================================';
+PRINT 'DATABASE HEALTH CHECK COMPLETED';
+PRINT 'Time: ' + CONVERT(VARCHAR, GETDATE(), 120);
+PRINT '========================================';
