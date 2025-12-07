@@ -1,0 +1,691 @@
+---
+title: "Multi-Region Commercial Sales Data Warehouse"
+subtitle: "Global Retail & Supply Chain Analytics"
+author: "Hasan Muhammad"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: true
+    theme: cosmo
+    code-fold: false
+    code-tools: true
+    embed-resources: true
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+    geometry:
+      - margin=1in
+  docx:
+    toc: true
+    number-sections: true
+execute:
+  echo: false
+  warning: false
+---
+
+# Overview {.unnumbered}
+
+::: {.callout-note}
+## Project Information
+- **Platform Name:** Multi-Region Commercial Sales Data Warehouse
+- **Database:** AdventureWorksDW2022
+- **Total Queries:** 24
+- **Total Sections:** 16
+- **Lines of Code:** 716
+:::
+
+## Purpose
+
+This comprehensive SQL analysis suite provides end-to-end business intelligence queries for multi-region commercial sales operations, covering global retail performance, supply chain analytics, customer insights, product intelligence, inventory management, and cross-border operational metrics.
+
+## Key Features
+
+- ✅ Year-over-year growth analysis with automatic partial data handling
+- ✅ Integrated customer segmentation (RFM + CLV + Churn in one query)
+- ✅ Product performance with built-in ABC analysis
+- ✅ Combined cohort and retention analysis
+- ✅ Predictive metrics and KPIs
+- ✅ Executive dashboard summaries
+- ✅ All table aliases in CAPITAL letters with AS keyword
+
+# Quick Start Guide
+
+## Common Use Cases
+
+| Need | Section | Approx Line |
+|:-----|:-------:|:-----------:|
+| Monthly sales report | Section 2 | Lines 50-90 |
+| Customer analysis | Section 4 | Lines 130-200 |
+| Top products with ABC | Section 5 | Lines 210-280 |
+| Executive summary | Section 17 | Lines 720-770 |
+
+: Common Query Use Cases {#tbl-usecases}
+
+# Section Index
+
+## SECTION 1: Yearly Growth Analysis {#sec-yearly}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 8-42
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Total Sales, Orders & Transactions with YoY Growth**
+
+- **Shows:** Annual orders, transactions, sales, costs, profit, growth rates
+- **Key Metrics:** Profit margin, OrdersGrowth, SalesGrowth
+- **Features:** Automatic handling of partial years
+- **Use Case:** Annual performance review, board presentations
+
+### Key Columns
+
+| Column | Description |
+|:-------|:------------|
+| `ActualYear` | Calendar year |
+| `TotalOrders` | Number of distinct orders |
+| `TotalTransactions` | Total transaction count |
+| `TotalSales` | Total sales amount |
+| `TotalCost` | Total product cost |
+| `TotalProfit` | Total profit (Sales - Cost) |
+| `ProfitMargin` | Profit percentage |
+| `OrdersGrowth` | Year-over-year orders growth |
+| `SalesGrowth` | Year-over-year sales growth |
+
+: Key Columns - Yearly Growth Analysis {#tbl-yearly-cols}
+
+---
+
+## SECTION 2: Monthly & Quarterly Analysis {#sec-monthly}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 49-86
+- **Output Tables:** 2
+:::
+
+### Queries
+
+#### Query 1: Monthly Sales Breakdown with YTD
+
+- **Shows:** Monthly orders, sales, profit, running YTD total
+- **Key Metrics:** Profit margin per month
+- **Use Case:** Monthly financial reports
+
+#### Query 2: Quarterly Performance with YoY Growth
+
+- **Shows:** Quarterly sales with YoY comparison
+- **Features:** Quarter-over-quarter growth
+- **Use Case:** Quarterly business reviews
+
+### Key Columns
+
+**Monthly Analysis:**
+
+- `CalendarYear`, `MonthNumberOfYear`, `EnglishMonthName`
+- `TotalOrders`, `MonthlySales`, `MonthlyProfit`
+- `YTDSales`, `ProfitMargin`
+
+**Quarterly Analysis:**
+
+- `CalendarYear`, `CalendarQuarter`
+- `TotalOrders`, `QuarterlySales`, `QuarterlyProfit`
+- `ProfitMargin`, `YoYGrowth`
+
+---
+
+## SECTION 3: Inventory Analysis {#sec-inventory}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 93-138
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Inventory Movement with Turnover Ratio**
+
+- **Shows:** Current units, inventory value, turnover ratio
+- **Features:** Stock status and turnover performance classification
+- **Use Case:** Inventory planning, supply chain optimization
+
+### Key Columns
+
+- `EnglishProductName`, `CalendarYear`, `MonthNumberOfYear`
+- `CurrentUnits`, `InventoryValue`, `AvgUnitCost`
+- `TurnoverRatio`, `StockStatus`, `TurnoverStatus`
+
+### Classification Rules
+
+::: {.panel-tabset}
+
+#### Stock Status
+
+| Status | Units Range |
+|:-------|:-----------:|
+| Low Stock | < 100 |
+| Normal | 100-500 |
+| Overstocked | > 500 |
+
+#### Turnover Performance
+
+| Status | Ratio Range |
+|:-------|:-----------:|
+| Excellent | > 10 |
+| Good | 5-10 |
+| Average | 2-5 |
+| Poor | < 2 |
+
+:::
+
+---
+
+## SECTION 4: Customer Analysis (CLV, RFM, Churn) {#sec-customer}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 145-212
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Comprehensive Customer Analysis**
+
+- **Shows:** Customer lifetime value, RFM scores, churn status, and tiers
+- **Features:** Complete 360° customer view with all metrics in one query
+- **Use Case:** Customer understanding, retention strategies, marketing segmentation
+
+### Key Columns
+
+| Column Group | Columns |
+|:-------------|:--------|
+| **Identity** | `CustomerKey`, `CustomerName`, `EmailAddress`, `Country` |
+| **Financial** | `TotalOrders`, `TotalRevenue`, `TotalProfit`, `AvgOrderValue` |
+| **Metrics** | `AnnualizedCLV`, `RFM_Score`, `CustomerSegment`, `ChurnStatus`, `CustomerTier` |
+
+: Customer Analysis Columns {#tbl-customer-cols}
+
+### Segmentation Rules
+
+::: {.panel-tabset}
+
+#### RFM Segments
+
+| Segment | R Score | F Score | M Score |
+|:--------|:-------:|:-------:|:-------:|
+| Champions | ≥4 | ≥4 | ≥4 |
+| Loyal Customers | ≥3 | ≥3 | ≥3 |
+| Promising | ≥4 | ≤2 | - |
+| At Risk | ≤2 | ≥3 | - |
+| Lost | ≤2 | ≤2 | - |
+
+#### Customer Tiers
+
+| Tier | Revenue Range |
+|:-----|:-------------:|
+| Platinum | > $10,000 |
+| Gold | $5,000 - $10,000 |
+| Silver | $2,000 - $5,000 |
+| Bronze | < $2,000 |
+
+#### Churn Status
+
+| Status | Days Since Last Purchase |
+|:-------|:------------------------:|
+| Active | ≤ 90 |
+| At Risk | 91-180 |
+| Dormant | 181-365 |
+| Lost | > 365 |
+
+:::
+
+---
+
+## SECTION 5: Product Analysis {#sec-product}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 219-286
+- **Output Tables:** 2
+:::
+
+### Queries
+
+#### Query 1: Product Performance with ABC Analysis
+
+- **Shows:** Orders, revenue, profit, ABC category integrated
+- **Features:** Pareto analysis built-in with product metrics
+- **Use Case:** Product portfolio review, inventory prioritization
+
+#### Query 2: Product Category Trends
+
+- **Shows:** Category performance with growth rates
+- **Use Case:** Category management
+
+### Key Columns
+
+- `Rank`, `EnglishProductName`, `Category`, `Subcategory`
+- `TotalOrders`, `UnitsSold`, `Revenue`, `Profit`
+- `ProfitMargin`, `AvgPrice`, `AvgDiscount`
+- `CumulativeShare`, `ABCCategory`, `MarginCategory`
+
+### Classification Rules
+
+::: {.panel-tabset}
+
+#### ABC Categories
+
+| Category | Revenue Share | Priority |
+|:---------|:-------------:|:--------:|
+| A Category | Top 80% | Critical |
+| B Category | Next 15% | Important |
+| C Category | Bottom 5% | Marginal |
+
+#### Margin Categories
+
+| Category | Profit Margin |
+|:---------|:-------------:|
+| High Margin | > 40% |
+| Medium Margin | 20-40% |
+| Low Margin | < 20% |
+
+:::
+
+---
+
+## SECTION 6: Sales Territory Analysis {#sec-territory}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 292-324
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Territory Performance Dashboard with Market Share**
+
+- **Shows:** Territory metrics with integrated market share calculation
+- **Features:** YoY growth and market share in single view
+- **Use Case:** Territory planning, regional strategy
+
+### Key Columns
+
+- `SalesTerritoryRegion`, `SalesTerritoryCountry`, `SalesTerritoryGroup`
+- `CalendarYear`, `Orders`, `Customers`
+- `Revenue`, `Profit`, `ProfitMargin`
+- `MarketShare`, `RevenuePerCustomer`, `YoYGrowth`
+
+---
+
+## SECTION 7: Promotion Analysis {#sec-promotion}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 331-360
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Promotion Effectiveness with Comparison**
+
+- **Shows:** All promotions with "No Promotion" baseline for comparison
+- **Features:** Side-by-side promotion performance analysis
+- **Use Case:** Promotion ROI analysis, discount strategy
+
+### Key Columns
+
+- `PromotionStatus`, `EnglishPromotionName`, `EnglishPromotionType`
+- `EnglishPromotionCategory`, `DiscountRate`
+- `TotalOrders`, `Revenue`, `Profit`, `ProfitMargin`
+- `RevenuePerOrder`, `AvgItemsPerOrder`
+
+---
+
+## SECTION 8: Time Analysis {#sec-time}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 367-417
+- **Output Tables:** 2
+:::
+
+### Queries
+
+#### Query 1: Sales by Day of Week
+
+- **Shows:** Weekday performance patterns
+- **Use Case:** Staffing optimization, promotion timing
+
+#### Query 2: Seasonal Analysis
+
+- **Shows:** Spring/Summer/Fall/Winter performance
+- **Use Case:** Seasonal planning, inventory forecasting
+
+### Seasons Definition
+
+| Season | Months |
+|:-------|:-------|
+| Winter | Dec, Jan, Feb |
+| Spring | Mar, Apr, May |
+| Summer | Jun, Jul, Aug |
+| Fall | Sep, Oct, Nov |
+
+: Seasonal Definitions {#tbl-seasons}
+
+---
+
+## SECTION 9: Cohort & Retention Analysis {#sec-cohort}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 424-465
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Customer Cohort Analysis with Retention Rate**
+
+- **Shows:** Cohort performance with retention metrics
+- **Features:** 12-month tracking with revenue analysis
+- **Use Case:** Customer acquisition ROI, retention strategy effectiveness
+
+### Key Columns
+
+- `CohortMonth`, `InitialCustomers`, `MonthsSinceCohort`
+- `ActiveCustomers`, `RetentionRate`
+- `CohortRevenue`, `AvgRevenuePerCustomer`
+
+---
+
+## SECTION 10: Shipping & Delivery Analysis {#sec-shipping}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 472-493
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Shipping Performance & Freight Cost Analysis**
+
+- **Shows:** Delivery metrics combined with freight costs
+- **Features:** Complete logistics view in one output
+- **Use Case:** Shipping optimization, cost management
+
+### Key Columns
+
+- `SalesTerritoryRegion`, `CalendarYear`, `CalendarQuarter`
+- `TotalOrders`, `AvgDaysToShip`, `AvgShippingDays`
+- `AvgTotalDeliveryDays`, `OnTimeDeliveryRate`
+- `TotalFreightCost`, `AvgFreightPerOrder`, `FreightAsPercentOfSales`
+
+::: {.callout-important}
+**On-Time Delivery Target:** ≤ 7 days
+:::
+
+---
+
+## SECTION 11: Currency & Exchange Rate Analysis {#sec-currency}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 500-513
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Multi-Currency Sales Impact**
+
+- **Shows:** Revenue in local currency and USD equivalent
+- **Features:** Exchange rate volatility tracking
+- **Use Case:** International sales reporting, hedging strategy
+
+### Key Columns
+
+- `CurrencyName`, `CalendarYear`, `TotalOrders`
+- `RevenueInLocalCurrency`, `AvgExchangeRate`
+- `RevenueInUSD`, `ExchangeRateVolatility`
+
+---
+
+## SECTION 12: Customer Demographics Analysis {#sec-demographics}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 520-560
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Sales by Demographics & Age Analysis**
+
+- **Shows:** Gender, income, age, education, occupation metrics
+- **Features:** Complete demographic breakdown
+- **Use Case:** Demographic segmentation, targeted marketing
+
+### Key Columns
+
+- `Gender`, `MaritalStatus`, `IncomeRange`, `AgeGroup`
+- `EnglishEducation`, `EnglishOccupation`
+- `TotalCustomers`, `TotalOrders`, `TotalRevenue`
+- `AvgOrderValue`, `RevenuePerCustomer`, `OrdersPerCustomer`
+
+### Classification Ranges
+
+::: {.panel-tabset}
+
+#### Income Ranges
+
+- < $25K
+- $25K - $50K
+- $50K - $75K
+- $75K - $100K
+- \> $100K
+
+#### Age Groups
+
+- 18-24
+- 25-34
+- 35-44
+- 45-54
+- 55-64
+- 65+
+
+:::
+
+---
+
+## SECTION 13: Geography Analysis {#sec-geography}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 567-600
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Sales by Country, Region & Top Cities**
+
+- **Shows:** Complete geographic breakdown with top 10 cities per country
+- **Features:** Integrated city rankings with performance metrics
+- **Use Case:** Market expansion planning, territory optimization
+
+### Key Columns
+
+- `Country`, `CityRank`, `City`, `State`
+- `TotalCustomers`, `TotalOrders`, `TotalRevenue`
+- `TotalProfit`, `ProfitMargin`, `RevenuePerCustomer`
+
+---
+
+## SECTION 14: Product Bundle Analysis (Market Basket) {#sec-basket}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 607-624
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Products Frequently Bought Together**
+
+- **Shows:** Top 50 product pairs purchased in same order
+- **Features:** Support percentage calculation
+- **Use Case:** Cross-selling strategies, bundle promotions
+
+### Key Columns
+
+- `Product1Name`, `Product2Name`
+- `TimesBoughtTogether`, `SupportPercentage`
+
+---
+
+## SECTION 15: Predictive Metrics & KPIs {#sec-predictive}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 631-683
+- **Output Tables:** 2
+:::
+
+### Queries
+
+#### Query 1: Customer Lifetime Value Prediction
+
+- **Shows:** Historical revenue with 3-year CLV projection
+- **Features:** Purchase frequency classification
+- **Use Case:** Customer investment decisions, retention budgeting
+
+#### Query 2: Sales Velocity (Trend Analysis)
+
+- **Shows:** Monthly revenue with 3-month moving averages
+- **Features:** Quarter-over-quarter growth tracking
+- **Use Case:** Sales forecasting, trend identification
+
+### Purchase Frequency Classification
+
+| Frequency | Days Between Orders |
+|:----------|:-------------------:|
+| High | ≤ 30 |
+| Medium | 31-90 |
+| Low | > 90 |
+
+: Purchase Frequency Rules {#tbl-frequency}
+
+---
+
+## SECTION 16: Profitability Deep Dive {#sec-profitability}
+
+::: {.callout-tip}
+## Section Details
+- **Lines:** 690-707
+- **Output Tables:** 1
+:::
+
+### Query Description
+
+**Profit Margin Analysis by Multiple Dimensions**
+
+- **Shows:** Profitability by category, territory, and year
+- **Features:** Profit ranking per year
+- **Use Case:** Strategic planning, resource allocation
+
+### Key Columns
+
+- `Category`, `Territory`, `CalendarYear`
+- `Orders`, `Revenue`, `Cost`, `Profit`
+- `ProfitMargin`, `ProfitRank`
+
+---
+
+# Common Business Questions {.unnumbered}
+
+| Question | Section | Query |
+|:---------|:-------:|:-----:|
+| "What's our YoY growth?" | [1](#sec-yearly) | Query 1 |
+| "Who are our best customers?" | [4](#sec-customer) | Query 1 |
+| "Which products sell together?" | [14](#sec-basket) | Query 1 |
+| "What's our retention rate?" | [9](#sec-cohort) | Query 1 |
+| "Which customers are at risk?" | [4](#sec-customer) | Query 1 |
+| "What's our profit margin by category?" | [16](#sec-profitability) | Query 1 |
+| "How's our shipping performance?" | [10](#sec-shipping) | Query 1 |
+| "What are our top cities?" | [13](#sec-geography) | Query 1 |
+| "What's our monthly sales trend?" | [2](#sec-monthly) | Query 1 |
+| "Which products are top performers?" | [5](#sec-product) | Query 1 |
+| "What's our inventory status?" | [3](#sec-inventory) | Query 1 |
+| "How do promotions impact sales?" | [7](#sec-promotion) | Query 1 |
+| "What's our seasonal performance?" | [8](#sec-time) | Query 2 |
+| "What's our customer lifetime value?" | [15](#sec-predictive) | Query 1 |
+
+: Business Questions Quick Reference {#tbl-questions}
+
+---
+
+# Notes & Tips {.unnumbered}
+
+## Important Considerations
+
+::: {.callout-warning}
+- Section 1 handles partial years automatically
+- Section 9 (Cohort) tracks first 12 months only
+- Section 14 (Market Basket) requires sufficient transaction history
+- Section 11 (Currency) requires FactCurrencyRate data
+:::
+
+## Recommended Workflow
+
+| Frequency | Sections | Purpose |
+|:----------|:---------|:--------|
+| **Daily** | All sections | Executive Dashboard |
+| **Weekly** | Sections 2, 4, 5 | Performance metrics |
+| **Monthly** | Sections 1, 9, 15 | Growth & predictions |
+| **Quarterly** | All sections | Comprehensive review |
+
+: Recommended Query Schedule {#tbl-workflow}
+
+---
+
+# Appendix {.unnumbered}
+
+## Quick Section Links
+
+::: {.grid}
+
+::: {.g-col-6}
+- [Yearly Growth](#sec-yearly)
+- [Monthly Analysis](#sec-monthly)
+- [Inventory](#sec-inventory)
+- [Customer Analysis](#sec-customer)
+- [Product Analysis](#sec-product)
+- [Territory](#sec-territory)
+- [Promotion](#sec-promotion)
+- [Time Analysis](#sec-time)
+:::
+
+::: {.g-col-6}
+- [Cohort Analysis](#sec-cohort)
+- [Shipping](#sec-shipping)
+- [Currency](#sec-currency)
+- [Demographics](#sec-demographics)
+- [Geography](#sec-geography)
+- [Market Basket](#sec-basket)
+- [Predictive Metrics](#sec-predictive)
+- [Profitability](#sec-profitability)
+:::
+
+:::
