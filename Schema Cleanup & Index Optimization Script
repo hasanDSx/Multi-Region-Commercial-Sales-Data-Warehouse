@@ -1,0 +1,48 @@
+USE AdventureWorksDW2022;
+GO
+
+-- Drop columns and tableas that are no longer needed
+ALTER TABLE dbo.FactInternetSales   DROP COLUMN CarrierTrackingNumber;
+ALTER TABLE dbo.FactInternetSales   DROP COLUMN CustomerPONumber;
+ALTER TABLE dbo.DimEmployee		    DROP COLUMN ParentEmployeeNationalIDAlternateKey;
+ALTER TABLE dbo.DimEmployee         DROP COLUMN EndDate;
+ALTER TABLE dbo.DimAccount          DROP COLUMN CustomMemberOptions;
+ALTER TABLE dbo.NewFactCurrencyRate DROP COLUMN DateKey;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN Suffix;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN Title;
+ALTER TABLE dbo.DimAccount          DROP COLUMN CustomMembers;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN EndDate;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN AddressLine2;
+ALTER TABLE dbo.ProspectiveBuyer    DROP COLUMN AddressLine2;
+ALTER TABLE dbo.DimReseller         DROP COLUMN AddressLine2;
+ALTER TABLE dbo.DimPromotion        DROP COLUMN MaxQty;
+ALTER TABLE dbo.DimReseller         DROP COLUMN MinPaymentAmount;
+ALTER TABLE dbo.DimProduct          DROP COLUMN EndDate;
+DROP TABLE NewFactCurrencyRate;
+GO
+
+
+-- Create the required indexs
+ALTER TABLE FactFinance ADD CONSTRAINT PK_FactFinance PRIMARY KEY CLUSTERED (FinanceKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_DateKey
+ON FactFinance(DateKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_OrganizationKey
+ON FactFinance(OrganizationKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_DepartmentGroupKey
+ON FactFinance(DepartmentGroupKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_ScenarioKey
+ON FactFinance(ScenarioKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_AccountKey
+ON FactFinance(AccountKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_Date
+ON FactFinance(Date);
+
+-- Update statistics
+EXEC sp_updatestats;
+GO
