@@ -73,4 +73,4 @@ Customer analytics (RFM, churn, CLV)
 
 Supply chain performance
 ________________________________________
-Full Report: https://binmo06-multi-region-commercial-sales-data-warehouse.share.connect.posit.cloud/
+Full Report: https://019b001d-d4a0-b810-f6f3-ded2fbeac8ad.share.connect.posit.cloud/
