@@ -31,10 +31,10 @@ execute:
 ::: {.callout-note}
 ## Project Information
 - **Platform Name:** Multi-Region Commercial Sales Data Warehouse
-- **Database:** AdventureWorksDW2022
-- **Total Queries:** 24
-- **Total Sections:** 16
-- **Lines of Code:** 716
+- **Database:** AdventureWorksDW 2022
+- **Total Queries:** 19
+- **Total Sections:** 15
+- **Lines of Code:** 706
 :::
 
 ## Purpose
@@ -46,10 +46,9 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 - ✅ Year-over-year growth analysis with automatic partial data handling
 - ✅ Integrated customer segmentation (RFM + CLV + Churn in one query)
 - ✅ Product performance with built-in ABC analysis
-- ✅ Combined cohort and retention analysis
 - ✅ Predictive metrics and KPIs
-- ✅ Executive dashboard summaries
-- ✅ All table aliases in CAPITAL letters with AS keyword
+- ✅ Multi-currency and exchange rate analysis
+- ✅ Customer demographics and geography insights
 
 # Quick Start Guide
 
@@ -57,10 +56,10 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 | Need | Section | Approx Line |
 |:-----|:-------:|:-----------:|
-| Monthly sales report | Section 2 | Lines 50-90 |
-| Customer analysis | Section 4 | Lines 130-200 |
-| Top products with ABC | Section 5 | Lines 210-280 |
-| Executive summary | Section 17 | Lines 720-770 |
+| Date range sales report | Section 1 & 2 | Lines 3-103 |
+| Customer analysis | Section 4 | Lines 139-211 |
+| Top products with ABC | Section 5 | Lines 213-302 |
+| Territory performance | Section 6 | Lines 304-347 |
 
 : Common Query Use Cases {#tbl-usecases}
 
@@ -70,7 +69,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 8-42
+- **Lines:** 3-43
 - **Output Tables:** 1
 :::
 
@@ -105,7 +104,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 49-86
+- **Lines:** 44-104
 - **Output Tables:** 2
 :::
 
@@ -120,7 +119,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 #### Query 2: Quarterly Performance with YoY Growth
 
 - **Shows:** Quarterly sales with YoY comparison
-- **Features:** Quarter-over-quarter growth
+- **Features:** Quarter-over-quarter growth with partial data handling
 - **Use Case:** Quarterly business reviews
 
 ### Key Columns
@@ -143,29 +142,25 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 93-138
+- **Lines:** 105-138
 - **Output Tables:** 1
 :::
 
 ### Query Description
 
-**Inventory Movement with Turnover Ratio**
+**Inventory Movement with Stock Status**
 
-- **Shows:** Current units, inventory value, turnover ratio
-- **Features:** Stock status and turnover performance classification
+- **Shows:** Current units, inventory value, average unit cost
+- **Features:** Stock status classification
 - **Use Case:** Inventory planning, supply chain optimization
 
 ### Key Columns
 
 - `EnglishProductName`, `CalendarYear`, `MonthNumberOfYear`
 - `CurrentUnits`, `InventoryValue`, `AvgUnitCost`
-- `TurnoverRatio`, `StockStatus`, `TurnoverStatus`
+- `StockStatus`
 
 ### Classification Rules
-
-::: {.panel-tabset}
-
-#### Stock Status
 
 | Status | Units Range |
 |:-------|:-----------:|
@@ -173,16 +168,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 | Normal | 100-500 |
 | Overstocked | > 500 |
 
-#### Turnover Performance
-
-| Status | Ratio Range |
-|:-------|:-----------:|
-| Excellent | > 10 |
-| Good | 5-10 |
-| Average | 2-5 |
-| Poor | < 2 |
-
-:::
+: Stock Status Classification {#tbl-stock-status}
 
 ---
 
@@ -190,7 +176,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 145-212
+- **Lines:** 139-212
 - **Output Tables:** 1
 :::
 
@@ -207,6 +193,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 | Column Group | Columns |
 |:-------------|:--------|
 | **Identity** | `CustomerKey`, `CustomerName`, `EmailAddress`, `Country` |
+| **Dates** | `FirstPurchaseDate`, `LastPurchaseDate`, `DaysSinceLastPurchase` |
 | **Financial** | `TotalOrders`, `TotalRevenue`, `TotalProfit`, `AvgOrderValue` |
 | **Metrics** | `AnnualizedCLV`, `RFM_Score`, `CustomerSegment`, `ChurnStatus`, `CustomerTier` |
 
@@ -225,6 +212,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 | Promising | ≥4 | ≤2 | - |
 | At Risk | ≤2 | ≥3 | - |
 | Lost | ≤2 | ≤2 | - |
+| Potential | Other combinations | Other | Other |
 
 #### Customer Tiers
 
@@ -252,7 +240,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 219-286
+- **Lines:** 213-303
 - **Output Tables:** 2
 :::
 
@@ -266,15 +254,22 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 #### Query 2: Product Category Trends
 
-- **Shows:** Category performance with growth rates
-- **Use Case:** Category management
+- **Shows:** Category performance with YoY growth rates
+- **Use Case:** Category management, trend analysis
 
 ### Key Columns
+
+**Product Performance:**
 
 - `Rank`, `EnglishProductName`, `Category`, `Subcategory`
 - `TotalOrders`, `UnitsSold`, `Revenue`, `Profit`
 - `ProfitMargin`, `AvgPrice`, `AvgDiscount`
 - `CumulativeShare`, `ABCCategory`, `MarginCategory`
+
+**Category Trends:**
+
+- `Category`, `CalendarYear`, `CalendarQuarter`
+- `Orders`, `UnitsSold`, `Revenue`, `YoYGrowth`
 
 ### Classification Rules
 
@@ -284,9 +279,9 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 | Category | Revenue Share | Priority |
 |:---------|:-------------:|:--------:|
-| A Category | Top 80% | Critical |
-| B Category | Next 15% | Important |
-| C Category | Bottom 5% | Marginal |
+| A - Top 80% | Up to 80% | Critical |
+| B - Next 15% | 80-95% | Important |
+| C - Bottom 5% | 95-100% | Marginal |
 
 #### Margin Categories
 
@@ -304,7 +299,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 292-324
+- **Lines:** 304-348
 - **Output Tables:** 1
 :::
 
@@ -329,7 +324,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 331-360
+- **Lines:** 349-384
 - **Output Tables:** 1
 :::
 
@@ -354,7 +349,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 367-417
+- **Lines:** 385-456
 - **Output Tables:** 2
 :::
 
@@ -363,11 +358,13 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 #### Query 1: Sales by Day of Week
 
 - **Shows:** Weekday performance patterns
+- **Features:** Percentage of total and variance from weekly average
 - **Use Case:** Staffing optimization, promotion timing
 
 #### Query 2: Seasonal Analysis
 
-- **Shows:** Spring/Summer/Fall/Winter performance
+- **Shows:** Spring/Summer/Fall/Winter performance with YoY growth
+- **Features:** Partial data handling for incomplete seasons
 - **Use Case:** Seasonal planning, inventory forecasting
 
 ### Seasons Definition
@@ -383,35 +380,11 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ---
 
-## SECTION 9: Cohort & Retention Analysis {#sec-cohort}
+## SECTION 9: Shipping & Delivery Analysis {#sec-shipping}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 424-465
-- **Output Tables:** 1
-:::
-
-### Query Description
-
-**Customer Cohort Analysis with Retention Rate**
-
-- **Shows:** Cohort performance with retention metrics
-- **Features:** 12-month tracking with revenue analysis
-- **Use Case:** Customer acquisition ROI, retention strategy effectiveness
-
-### Key Columns
-
-- `CohortMonth`, `InitialCustomers`, `MonthsSinceCohort`
-- `ActiveCustomers`, `RetentionRate`
-- `CohortRevenue`, `AvgRevenuePerCustomer`
-
----
-
-## SECTION 10: Shipping & Delivery Analysis {#sec-shipping}
-
-::: {.callout-tip}
-## Section Details
-- **Lines:** 472-493
+- **Lines:** 457-475
 - **Output Tables:** 1
 :::
 
@@ -419,28 +392,23 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 **Shipping Performance & Freight Cost Analysis**
 
-- **Shows:** Delivery metrics combined with freight costs
-- **Features:** Complete logistics view in one output
+- **Shows:** Freight costs by territory and time period
+- **Features:** Complete logistics cost view
 - **Use Case:** Shipping optimization, cost management
 
 ### Key Columns
 
 - `SalesTerritoryRegion`, `CalendarYear`, `CalendarQuarter`
-- `TotalOrders`, `AvgDaysToShip`, `AvgShippingDays`
-- `AvgTotalDeliveryDays`, `OnTimeDeliveryRate`
-- `TotalFreightCost`, `AvgFreightPerOrder`, `FreightAsPercentOfSales`
-
-::: {.callout-important}
-**On-Time Delivery Target:** ≤ 7 days
-:::
+- `TotalOrders`, `TotalFreightCost`
+- `AvgFreightPerOrder`, `TotalRevenue`
 
 ---
 
-## SECTION 11: Currency & Exchange Rate Analysis {#sec-currency}
+## SECTION 10: Currency & Exchange Rate Analysis {#sec-currency}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 500-513
+- **Lines:** 476-498
 - **Output Tables:** 1
 :::
 
@@ -449,22 +417,23 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 **Multi-Currency Sales Impact**
 
 - **Shows:** Revenue in local currency and USD equivalent
-- **Features:** Exchange rate volatility tracking
+- **Features:** Exchange rate volatility tracking with min/max rates
 - **Use Case:** International sales reporting, hedging strategy
 
 ### Key Columns
 
 - `CurrencyName`, `CalendarYear`, `TotalOrders`
-- `RevenueInLocalCurrency`, `AvgExchangeRate`
-- `RevenueInUSD`, `ExchangeRateVolatility`
+- `RevenueInLocalCurrency`, `AvgExchangeRate`, `RevenueInUSD`
+- `ExchangeImpactPct`, `MaxExchangeRate`, `MinExchangeRate`
+- `ExchangeRateVolatility`
 
 ---
 
-## SECTION 12: Customer Demographics Analysis {#sec-demographics}
+## SECTION 11: Customer Demographics Analysis {#sec-demographics}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 520-560
+- **Lines:** 499-546
 - **Output Tables:** 1
 :::
 
@@ -473,12 +442,12 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 **Sales by Demographics & Age Analysis**
 
 - **Shows:** Gender, income, age, education, occupation metrics
-- **Features:** Complete demographic breakdown
+- **Features:** Complete demographic breakdown with customer-level detail
 - **Use Case:** Demographic segmentation, targeted marketing
 
 ### Key Columns
 
-- `Gender`, `MaritalStatus`, `IncomeRange`, `AgeGroup`
+- `CustomerKey`, `Gender`, `MaritalStatus`, `IncomeRange`, `AgeGroup`
 - `EnglishEducation`, `EnglishOccupation`
 - `TotalCustomers`, `TotalOrders`, `TotalRevenue`
 - `AvgOrderValue`, `RevenuePerCustomer`, `OrdersPerCustomer`
@@ -508,11 +477,11 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ---
 
-## SECTION 13: Geography Analysis {#sec-geography}
+## SECTION 12: Geography Analysis {#sec-geography}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 567-600
+- **Lines:** 547-586
 - **Output Tables:** 1
 :::
 
@@ -532,11 +501,11 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ---
 
-## SECTION 14: Product Bundle Analysis (Market Basket) {#sec-basket}
+## SECTION 13: Product Bundle Analysis (Market Basket) {#sec-basket}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 607-624
+- **Lines:** 587-610
 - **Output Tables:** 1
 :::
 
@@ -555,11 +524,11 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ---
 
-## SECTION 15: Predictive Metrics & KPIs {#sec-predictive}
+## SECTION 14: Predictive Metrics & KPIs {#sec-predictive}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 631-683
+- **Lines:** 611-683
 - **Output Tables:** 2
 :::
 
@@ -581,19 +550,19 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 | Frequency | Days Between Orders |
 |:----------|:-------------------:|
-| High | ≤ 30 |
-| Medium | 31-90 |
-| Low | > 90 |
+| High Frequency | ≤ 30 |
+| Medium Frequency | 31-90 |
+| Low Frequency | > 90 |
 
 : Purchase Frequency Rules {#tbl-frequency}
 
 ---
 
-## SECTION 16: Profitability Deep Dive {#sec-profitability}
+## SECTION 15: Profitability Deep Dive {#sec-profitability}
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 690-707
+- **Lines:** 684-707
 - **Output Tables:** 1
 :::
 
@@ -619,18 +588,19 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 |:---------|:-------:|:-----:|
 | "What's our YoY growth?" | [1](#sec-yearly) | Query 1 |
 | "Who are our best customers?" | [4](#sec-customer) | Query 1 |
-| "Which products sell together?" | [14](#sec-basket) | Query 1 |
-| "What's our retention rate?" | [9](#sec-cohort) | Query 1 |
+| "Which products sell together?" | [13](#sec-basket) | Query 1 |
 | "Which customers are at risk?" | [4](#sec-customer) | Query 1 |
-| "What's our profit margin by category?" | [16](#sec-profitability) | Query 1 |
-| "How's our shipping performance?" | [10](#sec-shipping) | Query 1 |
-| "What are our top cities?" | [13](#sec-geography) | Query 1 |
+| "What's our profit margin by category?" | [15](#sec-profitability) | Query 1 |
+| "How's our shipping performance?" | [9](#sec-shipping) | Query 1 |
+| "What are our top cities?" | [12](#sec-geography) | Query 1 |
 | "What's our monthly sales trend?" | [2](#sec-monthly) | Query 1 |
 | "Which products are top performers?" | [5](#sec-product) | Query 1 |
 | "What's our inventory status?" | [3](#sec-inventory) | Query 1 |
 | "How do promotions impact sales?" | [7](#sec-promotion) | Query 1 |
 | "What's our seasonal performance?" | [8](#sec-time) | Query 2 |
-| "What's our customer lifetime value?" | [15](#sec-predictive) | Query 1 |
+| "What's our customer lifetime value?" | [14](#sec-predictive) | Query 1 |
+| "What's the exchange rate impact?" | [10](#sec-currency) | Query 1 |
+| "What are our customer demographics?" | [11](#sec-demographics) | Query 1 |
 
 : Business Questions Quick Reference {#tbl-questions}
 
@@ -642,18 +612,18 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-warning}
 - Section 1 handles partial years automatically
-- Section 9 (Cohort) tracks first 12 months only
-- Section 14 (Market Basket) requires sufficient transaction history
-- Section 11 (Currency) requires FactCurrencyRate data
+- Section 13 (Market Basket) requires sufficient transaction history
+- Section 10 (Currency) requires FactCurrencyRate data
+- All YoY comparisons handle partial data appropriately
 :::
 
 ## Recommended Workflow
 
 | Frequency | Sections | Purpose |
 |:----------|:---------|:--------|
-| **Daily** | All sections | Executive Dashboard |
-| **Weekly** | Sections 2, 4, 5 | Performance metrics |
-| **Monthly** | Sections 1, 9, 15 | Growth & predictions |
+| **Daily** | 2, 3, 7 | Operational metrics |
+| **Weekly** | 2, 4, 5, 9 | Performance tracking |
+| **Monthly** | 1, 4, 5, 14 | Growth & predictions |
 | **Quarterly** | All sections | Comprehensive review |
 
 : Recommended Query Schedule {#tbl-workflow}
@@ -678,7 +648,6 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 :::
 
 ::: {.g-col-6}
-- [Cohort Analysis](#sec-cohort)
 - [Shipping](#sec-shipping)
 - [Currency](#sec-currency)
 - [Demographics](#sec-demographics)
