@@ -14,25 +14,27 @@ Supply chain & delivery optimization
 ________________________________________
 ## Analysis Workflow
 
-### Phase 1 — Database Health & Validation
+### Phase 1 — Database Health, Validation & Views
 
-Core diagnostics performed:
+Core diagnostics and optimizations performed:
 
-Storage & metadata profiling
+* Storage & metadata profiling
 
-Backup history review
+* Backup history review
 
-Index usage & fragmentation analysis
+* Index usage & fragmentation analysis
 
-Duplicate & unused index detection
+* Duplicate & unused index detection
 
-Data type quality validation
+* Data type quality validation
 
-Null & duplicate record checks
+* Null & duplicate record checks
 
-Statistics update for better performance
+* Design and creation of optimized Views to support faster queries
 
-Result: `Clean`, `efficient`, `performance-ready environment`.
+* Statistics update for better performance
+
+Result: `Clean`, `efficient`, `performance-ready environment with optimized queries and reusable Views`.
 ________________________________________
 ## Phase 2 — Commercial & Supply Chain Analytics
 
