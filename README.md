@@ -4,19 +4,19 @@ This project provides a complete SQL-driven analytical framework designed for co
 ________________________________________
 ## Project Objectives
 
-Reliable database health audit
+* Reliable database health audit
 
-Business KPIs and performance analytics
+* Business KPIs and performance analytics
 
-Customer segmentation & retention intelligence
+* Customer segmentation & retention intelligence
 
-Supply chain & delivery optimization
+* Supply chain & delivery optimization
 ________________________________________
 ## Analysis Workflow
 
 ### Phase 1 — Database Health, Validation & Views
 
-Core diagnostics and optimizations performed:
+*Core diagnostics and optimizations performed*:
 
 * Storage & metadata profiling
 
@@ -38,38 +38,38 @@ Result: `Clean`, `efficient`, `performance-ready environment with optimized quer
 ________________________________________
 ## Phase 2 — Commercial & Supply Chain Analytics
 
-### Key insights delivered:
+*Key insights delivered*:
 
-Monthly / Quarterly / Yearly KPIs with YoY tracking
+* Monthly / Quarterly / Yearly KPIs with YoY tracking
 
-Customer RFM + churn + CLV tiers
+* Customer RFM + churn + CLV tiers
 
-Cohort retention & lifetime revenue
+* Cohort retention & lifetime revenue
 
-ABC product classification
+* ABC product classification
 
-Promotion uplift & profitability impact
+* Promotion uplift & profitability impact
 
-Territory & city performance analytics
+* Territory & city performance analytics
 
-Seasonal & weekday sales behavior
+* Seasonal & weekday sales behavior
 
-Market basket cross-selling analysis
+* Market basket cross-selling analysis
 
-Delivery KPIs: speed, freight %, on-time rate
+* Delivery KPIs: speed, freight %, on-time rate
 
 ➡️ Result: End-to-end analytics for
 `Revenue` • `Customers` • `Products` • `Regions` • `Delivery` • `Forecasts`
 ________________________________________
 ### Technologies & Skills
 
-SQL Server (T-SQL)
+* SQL Server (T-SQL)
 
-Query optimization & indexing
+* Query optimization & indexing
 
-Dimensional data warehousing
+* Dimensional data warehousing
 
-BI KPI modeling
+* BI KPI modeling
 
 Customer analytics (RFM, churn, CLV)
 
