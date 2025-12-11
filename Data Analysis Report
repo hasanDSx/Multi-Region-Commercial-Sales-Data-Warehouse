@@ -7,16 +7,15 @@ USE Global_Retail_SupplyChain;
 -- Total Sales, Orders, and Transactions per Year with YoY Growth
 WITH YearlySummary AS (
     SELECT
-        D.CalendarYear AS ActualYear, 
-        COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
+        CalendarYear AS ActualYear, 
+        COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
         COUNT(*) AS TotalTransactions,
-        SUM(F.SalesAmount) AS TotalSales,
-        SUM(F.TotalProductCost) AS TotalCost,
-        SUM(F.SalesAmount - F.TotalProductCost) AS TotalProfit,
-        COUNT(DISTINCT D.MonthNumberOfYear) AS MonthsCount
-    FROM FactInternetSales AS F 
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY D.CalendarYear
+        SUM(SalesAmount) AS TotalSales,
+        SUM(TotalProductCost) AS TotalCost,
+        SUM(Profit) AS TotalProfit,
+        COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
+    FROM vw_SalesWithDate
+    GROUP BY CalendarYear
 )
 SELECT
     ActualYear,
@@ -48,15 +47,14 @@ ORDER BY ActualYear;
 -- Monthly Sales Breakdown with YTD
 WITH MonthlySales AS (
     SELECT
-        D.CalendarYear,
-        D.MonthNumberOfYear,
-        D.EnglishMonthName,
-        COUNT(DISTINCT F.SalesOrderNumber) AS Orders,
-        SUM(F.SalesAmount) AS Sales,
-        SUM(F.SalesAmount - F.TotalProductCost) AS Profit
-    FROM FactInternetSales AS F 
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY D.CalendarYear, D.MonthNumberOfYear, D.EnglishMonthName
+        CalendarYear,
+        MonthNumberOfYear,
+        EnglishMonthName,
+        COUNT(DISTINCT SalesOrderNumber) AS Orders,
+        SUM(SalesAmount) AS Sales,
+        SUM(Profit) AS Profit
+    FROM vw_SalesWithDate
+    GROUP BY CalendarYear, MonthNumberOfYear, EnglishMonthName
 )
 SELECT
     CalendarYear,
@@ -73,15 +71,14 @@ ORDER BY CalendarYear, MonthNumberOfYear;
 -- Quarterly Performance with YoY Growth
 WITH QuarterlySales AS (
     SELECT
-        D.CalendarYear,
-        D.CalendarQuarter,
-        COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-        SUM(F.SalesAmount) AS QuarterlySales,
-        SUM(F.SalesAmount - F.TotalProductCost) AS QuarterlyProfit,
-        COUNT(DISTINCT D.MonthNumberOfYear) AS MonthsCount
-    FROM FactInternetSales AS F
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY D.CalendarYear, D.CalendarQuarter
+        CalendarYear,
+        CalendarQuarter,
+        COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
+        SUM(SalesAmount) AS QuarterlySales,
+        SUM(Profit) AS QuarterlyProfit,
+        COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
+    FROM vw_SalesWithDate
+    GROUP BY CalendarYear, CalendarQuarter
 )
 SELECT
     CalendarYear,
@@ -106,7 +103,7 @@ ORDER BY CalendarYear, CalendarQuarter;
 -- 3. Inventory Analysis
 --------------------------------------------------------------------------------
 
--- Inventory Movement with Turnover Ratio
+-- Inventory Movement with Stock Status
 WITH InventoryData AS (
     SELECT 
         P.EnglishProductName,
@@ -122,19 +119,19 @@ WITH InventoryData AS (
     GROUP BY P.EnglishProductName, P.ProductKey, D.CalendarYear, D.MonthNumberOfYear
 )
 SELECT 
-    I.EnglishProductName,
-    I.CalendarYear,
-    I.MonthNumberOfYear,
-    FORMAT(I.Units, 'N0') AS CurrentUnits,
-    CONCAT('$ ', FORMAT(I.InventoryValue, 'N2')) AS InventoryValue,
-    CONCAT('$ ', FORMAT(I.AvgUnitCost, 'N2')) AS AvgUnitCost,
+    EnglishProductName,
+    CalendarYear,
+    MonthNumberOfYear,
+    FORMAT(Units, 'N0') AS CurrentUnits,
+    CONCAT('$ ', FORMAT(InventoryValue, 'N2')) AS InventoryValue,
+    CONCAT('$ ', FORMAT(AvgUnitCost, 'N2')) AS AvgUnitCost,
     CASE 
-        WHEN I.Units < 100 THEN 'Low Stock'
-        WHEN I.Units < 500 THEN 'Normal'
+        WHEN Units < 100 THEN 'Low Stock'
+        WHEN Units < 500 THEN 'Normal'
         ELSE 'Overstocked'
     END AS StockStatus
-FROM InventoryData AS I
-ORDER BY I.CalendarYear, I.MonthNumberOfYear, I.EnglishProductName;
+FROM InventoryData
+ORDER BY CalendarYear, MonthNumberOfYear, EnglishProductName;
 
 --------------------------------------------------------------------------------
 -- 4. Customer Analysis (Combined CLV, RFM, Churn)
@@ -143,23 +140,21 @@ ORDER BY I.CalendarYear, I.MonthNumberOfYear, I.EnglishProductName;
 -- Comprehensive Customer Analysis
 WITH CustomerMetrics AS (
     SELECT 
-        C.CustomerKey,
-        C.FirstName + ' ' + C.LastName AS CustomerName,
+        S.CustomerKey,
+        C.CustomerName,
         C.EmailAddress,
-        G.EnglishCountryRegionName AS Country,
-        MIN(D.FullDateAlternateKey) AS FirstPurchaseDate,
-        MAX(D.FullDateAlternateKey) AS LastPurchaseDate,
-        DATEDIFF(DAY, MAX(D.FullDateAlternateKey), GETDATE()) AS Recency,
-        COUNT(DISTINCT F.SalesOrderNumber) AS Frequency,
-        SUM(F.SalesAmount) AS Monetary,
-        SUM(F.SalesAmount - F.TotalProductCost) AS TotalProfit,
-        AVG(F.SalesAmount) AS AvgOrderValue,
-        DATEDIFF(DAY, MIN(D.FullDateAlternateKey), MAX(D.FullDateAlternateKey)) AS CustomerLifespanDays
-    FROM FactInternetSales AS F 
-    JOIN DimCustomer AS C ON F.CustomerKey = C.CustomerKey 
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey 
-    JOIN DimGeography AS G ON C.GeographyKey = G.GeographyKey
-    GROUP BY C.CustomerKey, C.FirstName, C.LastName, C.EmailAddress, G.EnglishCountryRegionName
+        C.Country,
+        MIN(S.FullDateAlternateKey) AS FirstPurchaseDate,
+        MAX(S.FullDateAlternateKey) AS LastPurchaseDate,
+        DATEDIFF(DAY, MAX(S.FullDateAlternateKey), GETDATE()) AS Recency,
+        COUNT(DISTINCT S.SalesOrderNumber) AS Frequency,
+        SUM(S.SalesAmount) AS Monetary,
+        SUM(S.Profit) AS TotalProfit,
+        AVG(S.SalesAmount) AS AvgOrderValue,
+        DATEDIFF(DAY, MIN(S.FullDateAlternateKey), MAX(S.FullDateAlternateKey)) AS CustomerLifespanDays
+    FROM vw_SalesWithDate AS S
+    JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
+    GROUP BY S.CustomerKey, C.CustomerName, C.EmailAddress, C.Country
 ),
 RFMScores AS (
     SELECT 
@@ -218,19 +213,17 @@ ORDER BY Monetary DESC;
 WITH ProductMetrics AS (
     SELECT 
         P.EnglishProductName,
-        PC.EnglishProductCategoryName AS Category,
-        PS.EnglishProductSubcategoryName AS Subcategory,
-        COUNT(DISTINCT F.SalesOrderNumber) AS OrderCount,
-        SUM(F.OrderQuantity) AS UnitsSold,
-        SUM(F.SalesAmount) AS TotalRevenue,
-        SUM(F.SalesAmount - F.TotalProductCost) AS TotalProfit,
-        AVG(F.UnitPrice) AS AvgPrice,
-        AVG(F.UnitPriceDiscountPct) AS AvgDiscountPct
-    FROM FactInternetSales AS F 
-    JOIN DimProduct AS P ON F.ProductKey = P.ProductKey
-    LEFT JOIN DimProductSubcategory AS PS ON P.ProductSubcategoryKey = PS.ProductSubcategoryKey
-    LEFT JOIN DimProductCategory AS PC ON PS.ProductCategoryKey = PC.ProductCategoryKey
-    GROUP BY P.EnglishProductName, PC.EnglishProductCategoryName, PS.EnglishProductSubcategoryName
+        P.Category,
+        P.Subcategory,
+        COUNT(DISTINCT S.SalesOrderNumber) AS OrderCount,
+        SUM(S.OrderQuantity) AS UnitsSold,
+        SUM(S.SalesAmount) AS TotalRevenue,
+        SUM(S.Profit) AS TotalProfit,
+        AVG(S.UnitPrice) AS AvgPrice,
+        AVG(S.UnitPriceDiscountPct) AS AvgDiscountPct
+    FROM vw_SalesWithDate AS S
+    JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+    GROUP BY P.EnglishProductName, P.Category, P.Subcategory
 ),
 RankedProducts AS (
     SELECT 
@@ -269,19 +262,16 @@ ORDER BY Rank;
 -- Product Category Trends
 WITH CategorySales AS (
     SELECT 
-        PC.EnglishProductCategoryName AS Category,
-        D.CalendarYear,
-        D.CalendarQuarter,
-        COUNT(DISTINCT F.SalesOrderNumber) AS Orders,
-        SUM(F.OrderQuantity) AS UnitsSold,
-        SUM(F.SalesAmount) AS Revenue,
-        COUNT(DISTINCT D.MonthNumberOfYear) AS MonthsCount
-    FROM FactInternetSales AS F 
-    JOIN DimProduct AS P ON F.ProductKey = P.ProductKey 
-    JOIN DimProductSubcategory AS PS ON P.ProductSubcategoryKey = PS.ProductSubcategoryKey 
-    JOIN DimProductCategory AS PC ON PS.ProductCategoryKey = PC.ProductCategoryKey 
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY PC.EnglishProductCategoryName, D.CalendarYear, D.CalendarQuarter
+        P.Category,
+        S.CalendarYear,
+        S.CalendarQuarter,
+        COUNT(DISTINCT S.SalesOrderNumber) AS Orders,
+        SUM(S.OrderQuantity) AS UnitsSold,
+        SUM(S.SalesAmount) AS Revenue,
+        COUNT(DISTINCT S.MonthNumberOfYear) AS MonthsCount
+    FROM vw_SalesWithDate AS S
+    JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+    GROUP BY P.Category, S.CalendarYear, S.CalendarQuarter
 )
 SELECT 
     Category,
@@ -311,17 +301,16 @@ WITH TerritoryMetrics AS (
         T.SalesTerritoryRegion,
         T.SalesTerritoryCountry,
         T.SalesTerritoryGroup,
-        D.CalendarYear,
-        COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-        COUNT(DISTINCT F.CustomerKey) AS UniqueCustomers,
-        SUM(F.SalesAmount) AS TotalRevenue,
-        SUM(F.SalesAmount - F.TotalProductCost) AS TotalProfit,
-        SUM(SUM(F.SalesAmount)) OVER (PARTITION BY D.CalendarYear) AS YearTotalRevenue,
-        COUNT(DISTINCT D.MonthNumberOfYear) AS MonthsCount
-    FROM FactInternetSales AS F 
-    JOIN DimSalesTerritory AS T ON F.SalesTerritoryKey = T.SalesTerritoryKey 
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY T.SalesTerritoryRegion, T.SalesTerritoryCountry, T.SalesTerritoryGroup, D.CalendarYear
+        S.CalendarYear,
+        COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
+        COUNT(DISTINCT S.CustomerKey) AS UniqueCustomers,
+        SUM(S.SalesAmount) AS TotalRevenue,
+        SUM(S.Profit) AS TotalProfit,
+        SUM(SUM(S.SalesAmount)) OVER (PARTITION BY S.CalendarYear) AS YearTotalRevenue,
+        COUNT(DISTINCT S.MonthNumberOfYear) AS MonthsCount
+    FROM vw_SalesWithDate AS S
+    JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+    GROUP BY T.SalesTerritoryRegion, T.SalesTerritoryCountry, T.SalesTerritoryGroup, S.CalendarYear
 )
 SELECT 
     SalesTerritoryRegion,
@@ -358,12 +347,12 @@ WITH PromotionMetrics AS (
         PR.EnglishPromotionCategory,
         PR.DiscountPct,
         CASE WHEN PR.PromotionKey > 1 THEN 'With Promotion' ELSE 'No Promotion' END AS PromotionStatus,
-        COUNT(DISTINCT F.SalesOrderNumber) AS OrdersWithPromo,
-        SUM(F.SalesAmount) AS RevenueWithPromo,
-        SUM(F.SalesAmount - F.TotalProductCost) AS ProfitWithPromo,
-        AVG(F.OrderQuantity) AS AvgQuantityPerOrder
-    FROM FactInternetSales AS F 
-    JOIN DimPromotion AS PR ON F.PromotionKey = PR.PromotionKey
+        COUNT(DISTINCT S.SalesOrderNumber) AS OrdersWithPromo,
+        SUM(S.SalesAmount) AS RevenueWithPromo,
+        SUM(S.Profit) AS ProfitWithPromo,
+        AVG(S.OrderQuantity) AS AvgQuantityPerOrder
+    FROM vw_SalesWithDate AS S
+    JOIN DimPromotion AS PR ON S.PromotionKey = PR.PromotionKey
     GROUP BY PR.EnglishPromotionName, PR.EnglishPromotionType, PR.EnglishPromotionCategory, PR.DiscountPct, 
         CASE WHEN PR.PromotionKey > 1 THEN 'With Promotion' ELSE 'No Promotion' END
 )
@@ -388,41 +377,28 @@ ORDER BY PromotionStatus DESC, ProfitWithPromo DESC;
 
 -- Sales by Day of Week
 SELECT 
-    D.DayNumberOfWeek,
-    D.EnglishDayNameOfWeek,
-    COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-    CONCAT('$ ', FORMAT(SUM(F.SalesAmount), 'N2')) AS TotalRevenue,
-    CONCAT('$ ', FORMAT(AVG(F.SalesAmount), 'N2')) AS AvgOrderValue,
-    FORMAT((SUM(F.SalesAmount) * 100.0 / SUM(SUM(F.SalesAmount)) OVER ()), 'N2') + '%' AS PercentOfTotal,
-    FORMAT(((SUM(F.SalesAmount) - AVG(SUM(F.SalesAmount)) OVER ()) * 100.0 / AVG(SUM(F.SalesAmount)) OVER ()), 'N2') + '%' AS VsWeeklyAvg
-FROM FactInternetSales AS F 
-JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-GROUP BY D.DayNumberOfWeek, D.EnglishDayNameOfWeek
-ORDER BY D.DayNumberOfWeek;
+    DayNumberOfWeek,
+    EnglishDayNameOfWeek,
+    COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
+    CONCAT('$ ', FORMAT(SUM(SalesAmount), 'N2')) AS TotalRevenue,
+    CONCAT('$ ', FORMAT(AVG(SalesAmount), 'N2')) AS AvgOrderValue,
+    FORMAT((SUM(SalesAmount) * 100.0 / SUM(SUM(SalesAmount)) OVER ()), 'N2') + '%' AS PercentOfTotal,
+    FORMAT(((SUM(SalesAmount) - AVG(SUM(SalesAmount)) OVER ()) * 100.0 / AVG(SUM(SalesAmount)) OVER ()), 'N2') + '%' AS VsWeeklyAvg
+FROM vw_SalesWithDate
+GROUP BY DayNumberOfWeek, EnglishDayNameOfWeek
+ORDER BY DayNumberOfWeek;
 
 -- Seasonal Analysis
 WITH SeasonalSales AS ( 
     SELECT  
-        D.CalendarYear, 
-        CASE  
-            WHEN D.MonthNumberOfYear IN (3, 4, 5) THEN 'Spring' 
-            WHEN D.MonthNumberOfYear IN (6, 7, 8) THEN 'Summer' 
-            WHEN D.MonthNumberOfYear IN (9, 10, 11) THEN 'Fall' 
-            ELSE 'Winter' 
-        END AS Season, 
-        COUNT(DISTINCT F.SalesOrderNumber) AS Orders, 
-        SUM(F.SalesAmount) AS Revenue, 
-        SUM(F.SalesAmount - F.TotalProductCost) AS Profit,
-        COUNT(DISTINCT D.MonthNumberOfYear) AS MonthsCount
-    FROM FactInternetSales AS F  
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey 
-    GROUP BY D.CalendarYear,  
-        CASE  
-            WHEN D.MonthNumberOfYear IN (3, 4, 5) THEN 'Spring' 
-            WHEN D.MonthNumberOfYear IN (6, 7, 8) THEN 'Summer' 
-            WHEN D.MonthNumberOfYear IN (9, 10, 11) THEN 'Fall' 
-            ELSE 'Winter' 
-        END 
+        CalendarYear, 
+        Season, 
+        COUNT(DISTINCT SalesOrderNumber) AS Orders, 
+        SUM(SalesAmount) AS Revenue, 
+        SUM(Profit) AS Profit,
+        COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
+    FROM vw_SalesWithDate
+    GROUP BY CalendarYear, Season
 ) 
 SELECT  
     CalendarYear, 
@@ -461,17 +437,16 @@ ORDER BY CalendarYear,
 -- Shipping Performance & Freight Cost Analysis
 SELECT 
     T.SalesTerritoryRegion,
-    D.CalendarYear,
-    D.CalendarQuarter,
-    COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-    CONCAT('$ ', FORMAT(SUM(F.Freight), 'N2')) AS TotalFreightCost,
-    CONCAT('$ ', FORMAT(AVG(F.Freight), 'N2')) AS AvgFreightPerOrder,
-    CONCAT('$ ', FORMAT(SUM(F.SalesAmount), 'N2')) AS TotalRevenue
-FROM FactInternetSales AS F
-JOIN DimSalesTerritory AS T ON F.SalesTerritoryKey = T.SalesTerritoryKey
-JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-GROUP BY T.SalesTerritoryRegion, D.CalendarYear, D.CalendarQuarter
-ORDER BY D.CalendarYear, D.CalendarQuarter, TotalRevenue DESC;
+    S.CalendarYear,
+    S.CalendarQuarter,
+    COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
+    CONCAT('$ ', FORMAT(SUM(S.Freight), 'N2')) AS TotalFreightCost,
+    CONCAT('$ ', FORMAT(AVG(S.Freight), 'N2')) AS AvgFreightPerOrder,
+    CONCAT('$ ', FORMAT(SUM(S.SalesAmount), 'N2')) AS TotalRevenue
+FROM vw_SalesWithDate AS S
+JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+GROUP BY T.SalesTerritoryRegion, S.CalendarYear, S.CalendarQuarter
+ORDER BY S.CalendarYear, S.CalendarQuarter, TotalRevenue DESC;
 
 --------------------------------------------------------------------------------
 -- 10. CURRENCY & EXCHANGE RATE ANALYSIS
@@ -480,69 +455,46 @@ ORDER BY D.CalendarYear, D.CalendarQuarter, TotalRevenue DESC;
 -- Sales by Currency with Exchange Impact
 SELECT 
     CUR.CurrencyName,
-    D.CalendarYear,
-    COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-    CONCAT('$ ', FORMAT(ROUND(SUM(F.SalesAmount), 2), 'N2')) AS RevenueInLocalCurrency,
+    S.CalendarYear,
+    COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
+    CONCAT('$ ', FORMAT(ROUND(SUM(S.SalesAmount), 2), 'N2')) AS RevenueInLocalCurrency,
     ROUND(AVG(CR.EndOfDayRate), 4) AS AvgExchangeRate,
-    CONCAT('$ ', FORMAT(ROUND(SUM(F.SalesAmount * CR.EndOfDayRate), 2), 'N2')) AS RevenueInUSD,
-    CAST((SUM(F.SalesAmount * CR.EndOfDayRate) - SUM(F.SalesAmount))/SUM(F.SalesAmount)*100 AS DECIMAL(5,2)) AS ExchangeImpactPct,
-    ROUND(MAX(CR.EndOfDayRate), 4) AS MaxExchangeRate,
-    ROUND(MIN(CR.EndOfDayRate), 4) AS MinExchangeRate,
-    ROUND(STDEV(CR.EndOfDayRate), 4) AS ExchangeRateVolatility
-FROM FactInternetSales AS F
-JOIN DimCurrency AS CUR ON F.CurrencyKey = CUR.CurrencyKey
-JOIN FactCurrencyRate AS CR ON F.CurrencyKey = CR.CurrencyKey AND F.OrderDateKey = CR.DateKey
-JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-GROUP BY CUR.CurrencyName, D.CalendarYear
-ORDER BY SUM(F.SalesAmount * CR.EndOfDayRate) DESC;
+    CONCAT('$ ', FORMAT(ROUND(SUM(S.SalesAmount * CR.EndOfDayRate), 2), 'N2')) AS RevenueInUSD,
+    CAST((SUM(S.SalesAmount * CR.EndOfDayRate) - SUM(S.SalesAmount))/SUM(S.SalesAmount)*100 AS DECIMAL(5,2)) AS ExchangeImpactPct,
+    ROUND(MAX(CR.EndOfDayRate), 4) AS MaxExchangeRate
+    ,
+ROUND(MIN(CR.EndOfDayRate), 4) AS MinExchangeRate,
+ROUND(STDEV(CR.EndOfDayRate), 4) AS ExchangeRateVolatility
+FROM vw_SalesWithDate AS S
+JOIN DimCurrency AS CUR ON S.CurrencyKey = CUR.CurrencyKey
+JOIN FactCurrencyRate AS CR ON S.CurrencyKey = CR.CurrencyKey AND S.OrderDateKey = CR.DateKey
+GROUP BY CUR.CurrencyName, S.CalendarYear
+ORDER BY SUM(S.SalesAmount * CR.EndOfDayRate) DESC;
+
 
 --------------------------------------------------------------------------------
 -- 11. CUSTOMER DEMOGRAPHICS ANALYSIS
 --------------------------------------------------------------------------------
 
 -- Sales by Customer Demographics & Age Analysis
-WITH CustomerAge AS (
-    SELECT 
-        C.CustomerKey,
-        C.Gender,
-        C.MaritalStatus,
-        C.EnglishEducation,
-        C.EnglishOccupation,
-        CASE 
-            WHEN C.YearlyIncome < 25000 THEN '< $25K'
-            WHEN C.YearlyIncome < 50000 THEN '$25K - $50K'
-            WHEN C.YearlyIncome < 75000 THEN '$50K - $75K'
-            WHEN C.YearlyIncome < 100000 THEN '$75K - $100K'
-            ELSE '> $100K'
-        END AS IncomeRange,
-        CASE 
-            WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 25 THEN '18-24'
-            WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 35 THEN '25-34'
-            WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 45 THEN '35-44'
-            WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 55 THEN '45-54'
-            WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 65 THEN '55-64'
-            ELSE '65+'
-        END AS AgeGroup
-    FROM DimCustomer AS C
-)
 SELECT
-    CA.CustomerKey,
-    CA.Gender,
-    CA.MaritalStatus,
-    CA.IncomeRange,
-    CA.AgeGroup,
-    CA.EnglishEducation,
-    CA.EnglishOccupation,
-    COUNT(DISTINCT CA.CustomerKey) AS TotalCustomers,
-    COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-    CONCAT('$ ', FORMAT(SUM(F.SalesAmount), 'N2')) AS TotalRevenue,
-    CONCAT('$ ', FORMAT(AVG(F.SalesAmount), 'N2')) AS AvgOrderValue,
-    CONCAT('$ ', FORMAT((SUM(F.SalesAmount) / COUNT(DISTINCT CA.CustomerKey)), 'N2')) AS RevenuePerCustomer,
-    FORMAT((COUNT(DISTINCT F.SalesOrderNumber) * 1.0 / COUNT(DISTINCT CA.CustomerKey)), 'N2') AS OrdersPerCustomer
-FROM CustomerAge AS CA
-JOIN FactInternetSales AS F ON CA.CustomerKey = F.CustomerKey
-GROUP BY CA.CustomerKey, CA.Gender, CA.MaritalStatus, CA.IncomeRange, CA.AgeGroup, CA.EnglishEducation, CA.EnglishOccupation
-ORDER BY SUM(F.SalesAmount) DESC;
+    C.CustomerKey,
+    C.Gender,
+    C.MaritalStatus,
+    C.IncomeRange,
+    C.AgeGroup,
+    C.EnglishEducation,
+    C.EnglishOccupation,
+    COUNT(DISTINCT C.CustomerKey) AS TotalCustomers,
+    COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
+    CONCAT('$ ', FORMAT(SUM(S.SalesAmount), 'N2')) AS TotalRevenue,
+    CONCAT('$ ', FORMAT(AVG(S.SalesAmount), 'N2')) AS AvgOrderValue,
+    CONCAT('$ ', FORMAT((SUM(S.SalesAmount) / COUNT(DISTINCT C.CustomerKey)), 'N2')) AS RevenuePerCustomer,
+    FORMAT((COUNT(DISTINCT S.SalesOrderNumber) * 1.0 / COUNT(DISTINCT C.CustomerKey)), 'N2') AS OrdersPerCustomer
+FROM vw_CustomerGeography AS C
+JOIN vw_SalesWithDate AS S ON C.CustomerKey = S.CustomerKey
+GROUP BY C.CustomerKey, C.Gender, C.MaritalStatus, C.IncomeRange, C.AgeGroup, C.EnglishEducation, C.EnglishOccupation
+ORDER BY SUM(S.SalesAmount) DESC;
 
 --------------------------------------------------------------------------------
 -- 12. GEOGRAPHY ANALYSIS
@@ -550,26 +502,25 @@ ORDER BY SUM(F.SalesAmount) DESC;
 
 -- Sales by Country, Region, and Top Cities
 WITH GeographySales AS (
-    SELECT 
-        G.EnglishCountryRegionName AS Country,
-        G.StateProvinceName AS State,
-        G.City,
+    SELECT
+        C.Country,
+        C.State,
+        C.City,
         COUNT(DISTINCT C.CustomerKey) AS TotalCustomers,
-        COUNT(DISTINCT F.SalesOrderNumber) AS TotalOrders,
-        SUM(F.SalesAmount) AS TotalRevenue,
-        SUM(F.SalesAmount - F.TotalProductCost) AS TotalProfit
-    FROM FactInternetSales AS F
-    JOIN DimCustomer AS C ON F.CustomerKey = C.CustomerKey
-    JOIN DimGeography AS G ON C.GeographyKey = G.GeographyKey
-    GROUP BY G.EnglishCountryRegionName, G.StateProvinceName, G.City
+        COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
+        SUM(S.SalesAmount) AS TotalRevenue,
+        SUM(S.Profit) AS TotalProfit
+    FROM vw_SalesWithDate AS S
+    JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
+    GROUP BY C.Country, C.State, C.City
 ),
 CityRankings AS (
-    SELECT 
+    SELECT
         *,
         RANK() OVER (PARTITION BY Country ORDER BY TotalRevenue DESC) AS CityRank
     FROM GeographySales
 )
-SELECT 
+SELECT
     Country,
     CityRank,
     City,
@@ -590,7 +541,7 @@ ORDER BY Country, CityRank;
 
 -- Products Frequently Bought Together
 WITH ProductPairs AS (
-    SELECT 
+    SELECT
         F1.ProductKey AS Product1,
         F2.ProductKey AS Product2,
         COUNT(DISTINCT F1.SalesOrderNumber) AS TimesBoughtTogether
@@ -602,10 +553,11 @@ SELECT TOP 50
     P1.EnglishProductName AS Product1Name,
     P2.EnglishProductName AS Product2Name,
     PP.TimesBoughtTogether,
-    FORMAT((PP.TimesBoughtTogether * 100.0 / (SELECT COUNT(DISTINCT SalesOrderNumber) FROM FactInternetSales)), 'N2') + '%' AS SupportPercentage
+    FORMAT((PP.TimesBoughtTogether * 100.0
+    /(SELECT COUNT(DISTINCT SalesOrderNumber) FROM FactInternetSales)), 'N2') + '%' AS SupportPercentage
 FROM ProductPairs AS PP
-JOIN DimProduct AS P1 ON PP.Product1 = P1.ProductKey
-JOIN DimProduct AS P2 ON PP.Product2 = P2.ProductKey
+JOIN vw_ProductHierarchy AS P1 ON PP.Product1 = P1.ProductKey
+JOIN vw_ProductHierarchy AS P2 ON PP.Product2 = P2.ProductKey
 ORDER BY PP.TimesBoughtTogether DESC;
 
 --------------------------------------------------------------------------------
@@ -614,16 +566,15 @@ ORDER BY PP.TimesBoughtTogether DESC;
 
 -- Customer Lifetime Value Prediction & Sales Velocity
 WITH CustomerOrders AS (
-    SELECT 
+    SELECT
         C.CustomerKey,
-        C.FirstName + ' ' + C.LastName AS CustomerName,
-        D.FullDateAlternateKey,
-        F.SalesOrderNumber,
-        F.SalesAmount,
-        LAG(D.FullDateAlternateKey) OVER (PARTITION BY C.CustomerKey ORDER BY D.FullDateAlternateKey) AS PrevOrderDate
-    FROM FactInternetSales AS F
-    JOIN DimCustomer AS C ON F.CustomerKey = C.CustomerKey
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
+        C.CustomerName,
+        S.FullDateAlternateKey,
+        S.SalesOrderNumber,
+        S.SalesAmount,
+        LAG(S.FullDateAlternateKey) OVER (PARTITION BY C.CustomerKey ORDER BY S.FullDateAlternateKey) AS PrevOrderDate
+FROM vw_SalesWithDate AS S
+JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
 ),
 CustomerMetrics AS (
     SELECT
@@ -636,17 +587,17 @@ CustomerMetrics AS (
     FROM CustomerOrders
     GROUP BY CustomerKey, CustomerName
 )
-SELECT 
+SELECT
     CustomerName,
     TotalOrders,
     CONCAT('$ ', FORMAT(TotalRevenue, 'N2')) AS HistoricalRevenue,
     ISNULL(AvgDaysBetweenOrders, 0) AS AvgDaysBetweenPurchases,
-    CASE 
+    CASE
         WHEN AvgDaysBetweenOrders > 0 AND CustomerLifespanDays > 0
         THEN CONCAT('$ ', FORMAT((TotalRevenue * 365.0 / CustomerLifespanDays) * 3, 'N2'))
         ELSE 'N/A'
     END AS Projected3YearCLV,
-    CASE 
+    CASE
         WHEN AvgDaysBetweenOrders <= 30 THEN 'High Frequency'
         WHEN AvgDaysBetweenOrders <= 90 THEN 'Medium Frequency'
         ELSE 'Low Frequency'
@@ -657,26 +608,25 @@ ORDER BY TotalRevenue DESC;
 
 -- Sales Velocity (Trend Analysis)
 WITH MonthlySales AS (
-    SELECT 
-        D.CalendarYear,
-        D.MonthNumberOfYear,
-        SUM(F.SalesAmount) AS MonthlyRevenue,
-        ROW_NUMBER() OVER (ORDER BY D.CalendarYear, D.MonthNumberOfYear) AS MonthIndex,
-        COUNT(F.SalesAmount) AS SalesCount
-    FROM FactInternetSales AS F
-    JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-    GROUP BY D.CalendarYear, D.MonthNumberOfYear
+    SELECT
+        CalendarYear,
+        MonthNumberOfYear,
+        SUM(SalesAmount) AS MonthlyRevenue,
+        ROW_NUMBER() OVER (ORDER BY CalendarYear, MonthNumberOfYear) AS MonthIndex,
+        COUNT(SalesAmount) AS SalesCount
+FROM vw_SalesWithDate
+GROUP BY CalendarYear, MonthNumberOfYear
 )
-SELECT 
+SELECT
     CalendarYear,
     MonthNumberOfYear,
     CONCAT('$ ', FORMAT(MonthlyRevenue, 'N2')) AS MonthlyRevenue,
     CONCAT('$ ', FORMAT(AVG(MonthlyRevenue) OVER (ORDER BY MonthIndex ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 'N2')) AS ThreeMonthMovingAvg,
-    CASE 
+    CASE
         WHEN LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex) IS NULL THEN 'N/A'
         WHEN LAG(SalesCount, 3) OVER (ORDER BY MonthIndex) < 15 THEN 'Not Comparable'
-        ELSE CONCAT(FORMAT((MonthlyRevenue - LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex)) * 100.0 
-                / NULLIF(LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex), 0), 'N2'), '%')
+        ELSE CONCAT(FORMAT((MonthlyRevenue - LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex)) * 100.0
+            / NULLIF(LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex), 0), 'N2'), '%')
     END AS QuarterOverQuarterGrowth
 FROM MonthlySales
 ORDER BY CalendarYear, MonthNumberOfYear;
@@ -686,21 +636,18 @@ ORDER BY CalendarYear, MonthNumberOfYear;
 --------------------------------------------------------------------------------
 
 -- Profit Margin Analysis by Multiple Dimensions
-SELECT 
-    PC.EnglishProductCategoryName AS Category,
+SELECT
+    P.Category,
     T.SalesTerritoryRegion AS Territory,
-    D.CalendarYear,
-    COUNT(DISTINCT F.SalesOrderNumber) AS Orders,
-    CONCAT('$ ', FORMAT(SUM(F.SalesAmount), 'N2')) AS Revenue,
-    CONCAT('$ ', FORMAT(SUM(F.TotalProductCost), 'N2')) AS Cost,
-    CONCAT('$ ', FORMAT(SUM(F.SalesAmount - F.TotalProductCost), 'N2')) AS Profit,
-    FORMAT((SUM(F.SalesAmount - F.TotalProductCost) * 100.0 / NULLIF(SUM(F.SalesAmount), 0)), 'N2') + '%' AS ProfitMargin,
-    RANK() OVER (PARTITION BY D.CalendarYear ORDER BY SUM(F.SalesAmount - F.TotalProductCost) DESC) AS ProfitRank
-FROM FactInternetSales AS F
-JOIN DimProduct AS P ON F.ProductKey = P.ProductKey
-JOIN DimProductSubcategory AS PS ON P.ProductSubcategoryKey = PS.ProductSubcategoryKey
-JOIN DimProductCategory AS PC ON PS.ProductCategoryKey = PC.ProductCategoryKey
-JOIN DimSalesTerritory AS T ON F.SalesTerritoryKey = T.SalesTerritoryKey
-JOIN DimDate AS D ON F.OrderDateKey = D.DateKey
-GROUP BY PC.EnglishProductCategoryName, T.SalesTerritoryRegion, D.CalendarYear
-ORDER BY D.CalendarYear DESC, SUM(F.SalesAmount - F.TotalProductCost) DESC;
+    S.CalendarYear,
+    COUNT(DISTINCT S.SalesOrderNumber) AS Orders,
+    CONCAT('$ ', FORMAT(SUM(S.SalesAmount), 'N2')) AS Revenue,
+    CONCAT('$ ', FORMAT(SUM(S.TotalProductCost), 'N2')) AS Cost,
+    CONCAT('$ ', FORMAT(SUM(S.Profit), 'N2')) AS Profit,
+    FORMAT((SUM(S.Profit) * 100.0 / NULLIF(SUM(S.SalesAmount), 0)), 'N2') + '%' AS ProfitMargin,
+    RANK() OVER (PARTITION BY S.CalendarYear ORDER BY SUM(S.Profit) DESC) AS ProfitRank
+FROM vw_SalesWithDate AS S
+JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+GROUP BY P.Category, T.SalesTerritoryRegion, S.CalendarYear
+ORDER BY S.CalendarYear DESC, SUM(S.Profit) DESC;
