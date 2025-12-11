@@ -471,7 +471,6 @@ JOIN FactCurrencyRate AS CR ON S.CurrencyKey = CR.CurrencyKey AND S.OrderDateKey
 GROUP BY CUR.CurrencyName, S.CalendarYear
 ORDER BY SUM(S.SalesAmount * CR.EndOfDayRate) DESC;
 
-
 --------------------------------------------------------------------------------
 -- 11. CUSTOMER DEMOGRAPHICS ANALYSIS
 --------------------------------------------------------------------------------
