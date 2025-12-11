@@ -34,7 +34,7 @@ ________________________________________
 
 * Statistics update for better performance
 
-Result: `Clean`, `efficient`, `performance-ready environment with optimized queries and reusable Views`.
+➡️ Result: `Clean`, `efficient`, `performance-ready environment with optimized queries and reusable Views`.
 ________________________________________
 ## Phase 2 — Commercial & Supply Chain Analytics
 
