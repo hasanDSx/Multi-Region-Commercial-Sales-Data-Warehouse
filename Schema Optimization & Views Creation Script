@@ -1,0 +1,171 @@
+USE Global_Retail_SupplyChain;
+GO
+
+--------------------------------------------------------------------------------
+-- Schema Cleanup & Index Optimization Script
+-- Purpose: Remove unused columns, create performance indexes, and build views
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- SECTION 1: Drop Unused Columns and Tables
+--------------------------------------------------------------------------------
+
+ALTER TABLE dbo.FactInternetSales   DROP COLUMN CarrierTrackingNumber;
+ALTER TABLE dbo.FactInternetSales   DROP COLUMN CustomerPONumber;
+ALTER TABLE dbo.DimEmployee         DROP COLUMN ParentEmployeeNationalIDAlternateKey;
+ALTER TABLE dbo.DimEmployee         DROP COLUMN EndDate;
+ALTER TABLE dbo.DimAccount          DROP COLUMN CustomMemberOptions;
+ALTER TABLE dbo.NewFactCurrencyRate DROP COLUMN DateKey;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN Suffix;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN Title;
+ALTER TABLE dbo.DimAccount          DROP COLUMN CustomMembers;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN EndDate;
+ALTER TABLE dbo.DimCustomer         DROP COLUMN AddressLine2;
+ALTER TABLE dbo.ProspectiveBuyer    DROP COLUMN AddressLine2;
+ALTER TABLE dbo.DimReseller         DROP COLUMN AddressLine2;
+ALTER TABLE dbo.DimPromotion        DROP COLUMN MaxQty;
+ALTER TABLE dbo.DimReseller         DROP COLUMN MinPaymentAmount;
+ALTER TABLE dbo.DimProduct          DROP COLUMN EndDate;
+DROP TABLE NewFactCurrencyRate;
+GO
+
+--------------------------------------------------------------------------------
+-- SECTION 2: Create Performance Indexes
+--------------------------------------------------------------------------------
+
+ALTER TABLE FactFinance ADD CONSTRAINT PK_FactFinance PRIMARY KEY CLUSTERED (FinanceKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_DateKey
+ON FactFinance(DateKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_OrganizationKey
+ON FactFinance(OrganizationKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_DepartmentGroupKey
+ON FactFinance(DepartmentGroupKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_ScenarioKey
+ON FactFinance(ScenarioKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_AccountKey
+ON FactFinance(AccountKey);
+
+CREATE NONCLUSTERED INDEX IX_FactFinance_Date
+ON FactFinance(Date);
+
+--------------------------------------------------------------------------------
+-- SECTION 3: Create Reusable Views for Query Optimization
+--------------------------------------------------------------------------------
+
+-- View 1: Sales Facts with Date Information
+IF OBJECT_ID('vw_SalesWithDate', 'V') IS NOT NULL DROP VIEW vw_SalesWithDate;
+GO
+CREATE VIEW vw_SalesWithDate AS
+SELECT 
+    F.SalesOrderNumber,
+    F.SalesOrderLineNumber,
+    F.CustomerKey,
+    F.ProductKey,
+    F.SalesTerritoryKey,
+    F.PromotionKey,
+    F.CurrencyKey,
+    F.OrderDateKey,
+    F.OrderQuantity,
+    F.UnitPrice,
+    F.UnitPriceDiscountPct,
+    F.SalesAmount,
+    F.TotalProductCost,
+    F.Freight,
+    F.SalesAmount - F.TotalProductCost AS Profit,
+    D.CalendarYear,
+    D.CalendarQuarter,
+    D.MonthNumberOfYear,
+    D.EnglishMonthName,
+    D.DayNumberOfWeek,
+    D.EnglishDayNameOfWeek,
+    D.FullDateAlternateKey,
+    CASE 
+        WHEN D.MonthNumberOfYear IN (3, 4, 5) THEN 'Spring'
+        WHEN D.MonthNumberOfYear IN (6, 7, 8) THEN 'Summer'
+        WHEN D.MonthNumberOfYear IN (9, 10, 11) THEN 'Fall'
+        ELSE 'Winter'
+    END AS Season
+FROM FactInternetSales AS F
+JOIN DimDate AS D ON F.OrderDateKey = D.DateKey;
+GO
+
+-- View 2: Customer Information with Geography
+IF OBJECT_ID('vw_CustomerGeography', 'V') IS NOT NULL DROP VIEW vw_CustomerGeography;
+GO
+CREATE VIEW vw_CustomerGeography AS
+SELECT 
+    C.CustomerKey,
+    C.FirstName + ' ' + C.LastName AS CustomerName,
+    C.FirstName,
+    C.LastName,
+    C.EmailAddress,
+    C.Gender,
+    C.MaritalStatus,
+    C.EnglishEducation,
+    C.EnglishOccupation,
+    C.YearlyIncome,
+    C.BirthDate,
+    CASE 
+        WHEN C.YearlyIncome < 25000 THEN '< $25K'
+        WHEN C.YearlyIncome < 50000 THEN '$25K - $50K'
+        WHEN C.YearlyIncome < 75000 THEN '$50K - $75K'
+        WHEN C.YearlyIncome < 100000 THEN '$75K - $100K'
+        ELSE '> $100K'
+    END AS IncomeRange,
+    CASE 
+        WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 25 THEN '18-24'
+        WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 35 THEN '25-34'
+        WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 45 THEN '35-44'
+        WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 55 THEN '45-54'
+        WHEN DATEDIFF(YEAR, C.BirthDate, GETDATE()) < 65 THEN '55-64'
+        ELSE '65+'
+    END AS AgeGroup,
+    G.EnglishCountryRegionName AS Country,
+    G.StateProvinceName AS State,
+    G.City,
+    G.GeographyKey
+FROM DimCustomer AS C
+JOIN DimGeography AS G ON C.GeographyKey = G.GeographyKey;
+GO
+
+-- View 3: Product Hierarchy
+IF OBJECT_ID('vw_ProductHierarchy', 'V') IS NOT NULL DROP VIEW vw_ProductHierarchy;
+GO
+CREATE VIEW vw_ProductHierarchy AS
+SELECT 
+    P.ProductKey,
+    P.EnglishProductName,
+    P.StandardCost,
+    P.ListPrice,
+    PS.EnglishProductSubcategoryName AS Subcategory,
+    PC.EnglishProductCategoryName AS Category,
+    PS.ProductSubcategoryKey,
+    PC.ProductCategoryKey
+FROM DimProduct AS P
+LEFT JOIN DimProductSubcategory AS PS ON P.ProductSubcategoryKey = PS.ProductSubcategoryKey
+LEFT JOIN DimProductCategory AS PC ON PS.ProductCategoryKey = PC.ProductCategoryKey;
+GO
+
+-- View 4: Territory Information
+IF OBJECT_ID('vw_TerritoryInfo', 'V') IS NOT NULL DROP VIEW vw_TerritoryInfo;
+GO
+CREATE VIEW vw_TerritoryInfo AS
+SELECT 
+    SalesTerritoryKey,
+    SalesTerritoryRegion,
+    SalesTerritoryCountry,
+    SalesTerritoryGroup
+FROM DimSalesTerritory;
+GO
+
+--------------------------------------------------------------------------------
+-- SECTION 4: Update Statistics for Performance
+--------------------------------------------------------------------------------
+
+EXEC sp_updatestats;
+GO
