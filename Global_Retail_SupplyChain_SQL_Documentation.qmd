@@ -34,7 +34,7 @@ execute:
 - **Database:** AdventureWorksDW 2022
 - **Total Queries:** 19
 - **Total Sections:** 15
-- **Lines of Code:** 706
+- **Lines of Code:** 652
 :::
 
 ## Purpose
@@ -69,7 +69,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 3-43
+- **Lines:** 3-42
 - **Output Tables:** 1
 :::
 
@@ -104,7 +104,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 44-104
+- **Lines:** 43-101
 - **Output Tables:** 2
 :::
 
@@ -142,7 +142,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 105-138
+- **Lines:** 102-135
 - **Output Tables:** 1
 :::
 
@@ -176,7 +176,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 139-212
+- **Lines:** 136-207
 - **Output Tables:** 1
 :::
 
@@ -240,7 +240,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 213-303
+- **Lines:** 208-293
 - **Output Tables:** 2
 :::
 
@@ -299,7 +299,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 304-348
+- **Lines:** 294-337
 - **Output Tables:** 1
 :::
 
@@ -324,7 +324,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 349-384
+- **Lines:** 338-373
 - **Output Tables:** 1
 :::
 
@@ -349,7 +349,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 385-456
+- **Lines:** 374-432
 - **Output Tables:** 2
 :::
 
@@ -384,7 +384,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 457-475
+- **Lines:** 433-450
 - **Output Tables:** 1
 :::
 
@@ -408,7 +408,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 476-498
+- **Lines:** 451-473
 - **Output Tables:** 1
 :::
 
@@ -433,7 +433,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 499-546
+- **Lines:** 474-497
 - **Output Tables:** 1
 :::
 
@@ -481,7 +481,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 547-586
+- **Lines:** 498-536
 - **Output Tables:** 1
 :::
 
@@ -505,7 +505,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 587-610
+- **Lines:** 537-561
 - **Output Tables:** 1
 :::
 
@@ -528,7 +528,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 611-683
+- **Lines:** 562-632
 - **Output Tables:** 2
 :::
 
@@ -562,7 +562,7 @@ This comprehensive SQL analysis suite provides end-to-end business intelligence 
 
 ::: {.callout-tip}
 ## Section Details
-- **Lines:** 684-707
+- **Lines:** 633-652
 - **Output Tables:** 1
 :::
 
