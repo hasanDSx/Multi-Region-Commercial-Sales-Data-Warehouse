@@ -1,5 +1,67 @@
 USE Global_Retail_SupplyChain;
 
+--================================================================================
+-- 0. CONFIGURATION VARIABLES
+--   Change any business rule ONCE here instead of hunting for it inside the
+--   report. Every section below references these variables instead of
+--   hardcoded numbers.
+--================================================================================
+DECLARE @FullYearMonths          INT            = 12;   -- months required for a "full" year
+DECLARE @FullQuarterMonths       INT            = 3;    -- months required for a "full" quarter/season
+
+DECLARE @LowStockThreshold       INT            = 100;  -- Inventory: below this = Low Stock
+DECLARE @NormalStockThreshold    INT            = 500;  -- Inventory: below this = Normal, above = Overstocked
+
+DECLARE @ActiveDaysThreshold     INT            = 90;   -- Churn: Recency <= this = Active
+DECLARE @AtRiskDaysThreshold     INT            = 180;  -- Churn: Recency <= this = At Risk
+DECLARE @DormantDaysThreshold    INT            = 365;  -- Churn: Recency <= this = Dormant, else Lost
+
+DECLARE @PlatinumThreshold       MONEY          = 10000; -- Customer tiering
+DECLARE @GoldThreshold           MONEY          = 5000;
+DECLARE @SilverThreshold         MONEY          = 2000;
+
+DECLARE @HighMarginThreshold     DECIMAL(5,4)   = 0.40;  -- Product margin banding
+DECLARE @MediumMarginThreshold   DECIMAL(5,4)   = 0.20;
+
+DECLARE @ABCTierA_Pct            DECIMAL(5,2)   = 80.00; -- ABC / Pareto cut-offs (cumulative revenue %)
+DECLARE @ABCTierB_Pct            DECIMAL(5,2)   = 95.00;
+
+DECLARE @HighFrequencyDays       INT            = 30;    -- Purchase-frequency banding
+DECLARE @MediumFrequencyDays     INT            = 90;
+
+DECLARE @CLVProjectionYears      INT            = 3;     -- Years to project CLV forward
+DECLARE @TopCitiesPerCountry     INT            = 10;     -- Geography: top N cities per country
+DECLARE @TopProductPairs         INT            = 50;     -- Market-basket: top N pairs to return
+DECLARE @MinComparableSalesCount INT            = 15;     -- Min transactions for a QoQ comparison to be valid
+DECLARE @NoPromotionKey          INT            = 1;      -- PromotionKey value that means "no promotion"
+
+--================================================================================
+-- 0.1 STAGING TEMP TABLES
+--   The four sources below (vw_SalesWithDate, vw_CustomerGeography,
+--   vw_ProductHierarchy, vw_TerritoryInfo) were previously re-queried from
+--   scratch in almost every section. They're now materialized ONCE into temp
+--   tables with supporting indexes, and every section below reads from the
+--   temp table instead of the view. Output/logic is unchanged.
+--================================================================================
+IF OBJECT_ID('tempdb..#SalesBase')        IS NOT NULL DROP TABLE #SalesBase;
+IF OBJECT_ID('tempdb..#CustomerGeo')      IS NOT NULL DROP TABLE #CustomerGeo;
+IF OBJECT_ID('tempdb..#ProductHierarchy') IS NOT NULL DROP TABLE #ProductHierarchy;
+IF OBJECT_ID('tempdb..#TerritoryInfo')    IS NOT NULL DROP TABLE #TerritoryInfo;
+
+SELECT * INTO #SalesBase        FROM vw_SalesWithDate;
+SELECT * INTO #CustomerGeo      FROM vw_CustomerGeography;
+SELECT * INTO #ProductHierarchy FROM vw_ProductHierarchy;
+SELECT * INTO #TerritoryInfo    FROM vw_TerritoryInfo;
+
+CREATE INDEX IX_SalesBase_Year       ON #SalesBase (CalendarYear, CalendarQuarter, MonthNumberOfYear);
+CREATE INDEX IX_SalesBase_Customer   ON #SalesBase (CustomerKey);
+CREATE INDEX IX_SalesBase_Product    ON #SalesBase (ProductKey);
+CREATE INDEX IX_SalesBase_Territory  ON #SalesBase (SalesTerritoryKey);
+CREATE INDEX IX_SalesBase_Currency   ON #SalesBase (CurrencyKey, OrderDateKey);
+CREATE INDEX IX_CustomerGeo_Key      ON #CustomerGeo (CustomerKey);
+CREATE INDEX IX_ProductHier_Key      ON #ProductHierarchy (ProductKey);
+CREATE INDEX IX_TerritoryInfo_Key    ON #TerritoryInfo (SalesTerritoryKey);
+
 --------------------------------------------------------------------------------
 -- 1. Yearly Growth Analysis
 --------------------------------------------------------------------------------
@@ -7,14 +69,14 @@ USE Global_Retail_SupplyChain;
 -- Total Sales, Orders, and Transactions per Year with YoY Growth
 WITH YearlySummary AS (
     SELECT
-        CalendarYear AS ActualYear, 
+        CalendarYear AS ActualYear,
         COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
         COUNT(*) AS TotalTransactions,
         SUM(SalesAmount) AS TotalSales,
         SUM(TotalProductCost) AS TotalCost,
         SUM(Profit) AS TotalProfit,
         COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
-    FROM vw_SalesWithDate
+    FROM #SalesBase
     GROUP BY CalendarYear
 )
 SELECT
@@ -25,15 +87,15 @@ SELECT
     CONCAT('$ ', FORMAT(TotalCost, 'N2')) AS TotalCost,
     CONCAT('$ ', FORMAT(TotalProfit, 'N2')) AS TotalProfit,
     FORMAT((TotalProfit * 100.0 / NULLIF(TotalSales, 0)), 'N2') + '%' AS ProfitMargin,
-    CASE 
-        WHEN MonthsCount < 12 THEN 'Partial Data (' + CAST(MonthsCount AS VARCHAR) + ' month(s))'
-        WHEN LAG(MonthsCount) OVER (ORDER BY ActualYear) < 12 THEN 'Not Comparable'
+    CASE
+        WHEN MonthsCount < @FullYearMonths THEN 'Partial Data (' + CAST(MonthsCount AS VARCHAR) + ' month(s))'
+        WHEN LAG(MonthsCount) OVER (ORDER BY ActualYear) < @FullYearMonths THEN 'Not Comparable'
         WHEN LAG(TotalOrders) OVER (ORDER BY ActualYear) IS NULL THEN 'N/A'
         ELSE CONCAT(FORMAT(((TotalOrders - LAG(TotalOrders) OVER (ORDER BY ActualYear)) * 100.0 / LAG(TotalOrders) OVER (ORDER BY ActualYear)), 'N2'), '%')
     END AS OrdersGrowth,
-    CASE 
-        WHEN MonthsCount < 12 THEN 'Partial Data'
-        WHEN LAG(MonthsCount) OVER (ORDER BY ActualYear) < 12 THEN 'Not Comparable'
+    CASE
+        WHEN MonthsCount < @FullYearMonths THEN 'Partial Data'
+        WHEN LAG(MonthsCount) OVER (ORDER BY ActualYear) < @FullYearMonths THEN 'Not Comparable'
         WHEN LAG(TotalSales) OVER (ORDER BY ActualYear) IS NULL THEN 'N/A'
         ELSE CONCAT(FORMAT(((TotalSales - LAG(TotalSales) OVER (ORDER BY ActualYear)) * 100.0 / LAG(TotalSales) OVER (ORDER BY ActualYear)), 'N2'), '%')
     END AS SalesGrowth
@@ -53,7 +115,7 @@ WITH MonthlySales AS (
         COUNT(DISTINCT SalesOrderNumber) AS Orders,
         SUM(SalesAmount) AS Sales,
         SUM(Profit) AS Profit
-    FROM vw_SalesWithDate
+    FROM #SalesBase
     GROUP BY CalendarYear, MonthNumberOfYear, EnglishMonthName
 )
 SELECT
@@ -77,7 +139,7 @@ WITH QuarterlySales AS (
         SUM(SalesAmount) AS QuarterlySales,
         SUM(Profit) AS QuarterlyProfit,
         COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
-    FROM vw_SalesWithDate
+    FROM #SalesBase
     GROUP BY CalendarYear, CalendarQuarter
 )
 SELECT
@@ -87,14 +149,14 @@ SELECT
     CONCAT('$ ', FORMAT(QuarterlySales, 'N2')) AS QuarterlySales,
     CONCAT('$ ', FORMAT(QuarterlyProfit, 'N2')) AS QuarterlyProfit,
     FORMAT((QuarterlyProfit * 100.0 / NULLIF(QuarterlySales, 0)), 'N2') + '%' AS ProfitMargin,
-    CASE 
-        WHEN MonthsCount < 3 AND LAG(MonthsCount) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear) < 3 THEN 'Both Partial'
-        WHEN LAG(MonthsCount) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear) < 3 THEN 'Not Comparable'
+    CASE
+        WHEN MonthsCount < @FullQuarterMonths AND LAG(MonthsCount) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear) < @FullQuarterMonths THEN 'Both Partial'
+        WHEN LAG(MonthsCount) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear) < @FullQuarterMonths THEN 'Not Comparable'
         WHEN LAG(QuarterlySales) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear) IS NULL THEN 'N/A'
         ELSE CONCAT(
             FORMAT(((QuarterlySales - LAG(QuarterlySales) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear)) * 100.0
                 / NULLIF(LAG(QuarterlySales) OVER (PARTITION BY CalendarQuarter ORDER BY CalendarYear), 0)), 'N2'), '%',
-            CASE WHEN MonthsCount < 3 THEN CONCAT(' (', MonthsCount, '/3 months)') ELSE '' END)
+            CASE WHEN MonthsCount < @FullQuarterMonths THEN CONCAT(' (', MonthsCount, '/', @FullQuarterMonths, ' months)') ELSE '' END)
     END AS YoYGrowth
 FROM QuarterlySales
 ORDER BY CalendarYear, CalendarQuarter;
@@ -105,7 +167,7 @@ ORDER BY CalendarYear, CalendarQuarter;
 
 -- Inventory Movement with Stock Status
 WITH InventoryData AS (
-    SELECT 
+    SELECT
         P.EnglishProductName,
         P.ProductKey,
         D.CalendarYear,
@@ -113,21 +175,21 @@ WITH InventoryData AS (
         SUM(FI.UnitsBalance) AS Units,
         SUM(FI.UnitCost * FI.UnitsBalance) AS InventoryValue,
         AVG(FI.UnitCost) AS AvgUnitCost
-    FROM FactProductInventory AS FI 
-    JOIN DimProduct AS P ON FI.ProductKey = P.ProductKey 
+    FROM FactProductInventory AS FI
+    JOIN DimProduct AS P ON FI.ProductKey = P.ProductKey
     JOIN DimDate AS D ON FI.DateKey = D.DateKey
     GROUP BY P.EnglishProductName, P.ProductKey, D.CalendarYear, D.MonthNumberOfYear
 )
-SELECT 
+SELECT
     EnglishProductName,
     CalendarYear,
     MonthNumberOfYear,
     FORMAT(Units, 'N0') AS CurrentUnits,
     CONCAT('$ ', FORMAT(InventoryValue, 'N2')) AS InventoryValue,
     CONCAT('$ ', FORMAT(AvgUnitCost, 'N2')) AS AvgUnitCost,
-    CASE 
-        WHEN Units < 100 THEN 'Low Stock'
-        WHEN Units < 500 THEN 'Normal'
+    CASE
+        WHEN Units < @LowStockThreshold THEN 'Low Stock'
+        WHEN Units < @NormalStockThreshold THEN 'Normal'
         ELSE 'Overstocked'
     END AS StockStatus
 FROM InventoryData
@@ -139,7 +201,7 @@ ORDER BY CalendarYear, MonthNumberOfYear, EnglishProductName;
 
 -- Comprehensive Customer Analysis
 WITH CustomerMetrics AS (
-    SELECT 
+    SELECT
         S.CustomerKey,
         C.CustomerName,
         C.EmailAddress,
@@ -152,19 +214,19 @@ WITH CustomerMetrics AS (
         SUM(S.Profit) AS TotalProfit,
         AVG(S.SalesAmount) AS AvgOrderValue,
         DATEDIFF(DAY, MIN(S.FullDateAlternateKey), MAX(S.FullDateAlternateKey)) AS CustomerLifespanDays
-    FROM vw_SalesWithDate AS S
-    JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
+    FROM #SalesBase AS S
+    JOIN #CustomerGeo AS C ON S.CustomerKey = C.CustomerKey
     GROUP BY S.CustomerKey, C.CustomerName, C.EmailAddress, C.Country
 ),
 RFMScores AS (
-    SELECT 
+    SELECT
         *,
         NTILE(5) OVER (ORDER BY Recency DESC) AS R_Score,
         NTILE(5) OVER (ORDER BY Frequency) AS F_Score,
         NTILE(5) OVER (ORDER BY Monetary) AS M_Score
     FROM CustomerMetrics
 )
-SELECT 
+SELECT
     CustomerKey,
     CustomerName,
     EmailAddress,
@@ -176,13 +238,13 @@ SELECT
     CONCAT('$ ', FORMAT(Monetary, 'N2')) AS TotalRevenue,
     CONCAT('$ ', FORMAT(TotalProfit, 'N2')) AS TotalProfit,
     CONCAT('$ ', FORMAT(AvgOrderValue, 'N2')) AS AvgOrderValue,
-    CASE 
-        WHEN CustomerLifespanDays > 0 
+    CASE
+        WHEN CustomerLifespanDays > 0
         THEN CONCAT('$ ', FORMAT((Monetary * 365.0 / CustomerLifespanDays), 'N2'))
         ELSE 'N/A'
     END AS AnnualizedCLV,
     CONCAT(R_Score, F_Score, M_Score) AS RFM_Score,
-    CASE 
+    CASE
         WHEN R_Score >= 4 AND F_Score >= 4 AND M_Score >= 4 THEN 'Champions'
         WHEN R_Score >= 3 AND F_Score >= 3 AND M_Score >= 3 THEN 'Loyal Customers'
         WHEN R_Score >= 4 AND F_Score <= 2 THEN 'Promising'
@@ -190,16 +252,16 @@ SELECT
         WHEN R_Score <= 2 AND F_Score <= 2 THEN 'Lost'
         ELSE 'Potential'
     END AS CustomerSegment,
-    CASE 
-        WHEN Recency <= 90 THEN 'Active'
-        WHEN Recency <= 180 THEN 'At Risk'
-        WHEN Recency <= 365 THEN 'Dormant'
+    CASE
+        WHEN Recency <= @ActiveDaysThreshold THEN 'Active'
+        WHEN Recency <= @AtRiskDaysThreshold THEN 'At Risk'
+        WHEN Recency <= @DormantDaysThreshold THEN 'Dormant'
         ELSE 'Lost'
     END AS ChurnStatus,
-    CASE 
-        WHEN Monetary > 10000 THEN 'Platinum'
-        WHEN Monetary > 5000 THEN 'Gold'
-        WHEN Monetary > 2000 THEN 'Silver'
+    CASE
+        WHEN Monetary > @PlatinumThreshold THEN 'Platinum'
+        WHEN Monetary > @GoldThreshold THEN 'Gold'
+        WHEN Monetary > @SilverThreshold THEN 'Silver'
         ELSE 'Bronze'
     END AS CustomerTier
 FROM RFMScores
@@ -211,7 +273,7 @@ ORDER BY Monetary DESC;
 
 -- Product Performance with ABC Analysis
 WITH ProductMetrics AS (
-    SELECT 
+    SELECT
         P.EnglishProductName,
         P.Category,
         P.Subcategory,
@@ -221,19 +283,19 @@ WITH ProductMetrics AS (
         SUM(S.Profit) AS TotalProfit,
         AVG(S.UnitPrice) AS AvgPrice,
         AVG(S.UnitPriceDiscountPct) AS AvgDiscountPct
-    FROM vw_SalesWithDate AS S
-    JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+    FROM #SalesBase AS S
+    JOIN #ProductHierarchy AS P ON S.ProductKey = P.ProductKey
     GROUP BY P.EnglishProductName, P.Category, P.Subcategory
 ),
 RankedProducts AS (
-    SELECT 
+    SELECT
         *,
         ROW_NUMBER() OVER (ORDER BY TotalRevenue DESC) AS Rank,
         SUM(TotalRevenue) OVER (ORDER BY TotalRevenue DESC) AS CumulativeRevenue,
         SUM(TotalRevenue) OVER () AS GrandTotalRevenue
     FROM ProductMetrics
 )
-SELECT 
+SELECT
     Rank,
     EnglishProductName,
     Category,
@@ -246,14 +308,14 @@ SELECT
     CONCAT('$ ', FORMAT(AvgPrice, 'N2')) AS AvgPrice,
     FORMAT(AvgDiscountPct * 100, 'N2') + '%' AS AvgDiscount,
     FORMAT((CumulativeRevenue * 100.0 / GrandTotalRevenue), 'N2') + '%' AS CumulativeShare,
-    CASE 
-        WHEN (CumulativeRevenue * 100.0 / GrandTotalRevenue) <= 80 THEN 'A - Top 80%'
-        WHEN (CumulativeRevenue * 100.0 / GrandTotalRevenue) <= 95 THEN 'B - Next 15%'
-        ELSE 'C - Bottom 5%'
+    CASE
+        WHEN (CumulativeRevenue * 100.0 / GrandTotalRevenue) <= @ABCTierA_Pct THEN 'A - Top ' + CAST(@ABCTierA_Pct AS VARCHAR) + '%'
+        WHEN (CumulativeRevenue * 100.0 / GrandTotalRevenue) <= @ABCTierB_Pct THEN 'B - Next ' + CAST(@ABCTierB_Pct - @ABCTierA_Pct AS VARCHAR) + '%'
+        ELSE 'C - Bottom ' + CAST(100 - @ABCTierB_Pct AS VARCHAR) + '%'
     END AS ABCCategory,
-    CASE 
-        WHEN TotalProfit / NULLIF(TotalRevenue, 0) > 0.4 THEN 'High Margin'
-        WHEN TotalProfit / NULLIF(TotalRevenue, 0) > 0.2 THEN 'Medium Margin'
+    CASE
+        WHEN TotalProfit / NULLIF(TotalRevenue, 0) > @HighMarginThreshold THEN 'High Margin'
+        WHEN TotalProfit / NULLIF(TotalRevenue, 0) > @MediumMarginThreshold THEN 'Medium Margin'
         ELSE 'Low Margin'
     END AS MarginCategory
 FROM RankedProducts
@@ -261,7 +323,7 @@ ORDER BY Rank;
 
 -- Product Category Trends
 WITH CategorySales AS (
-    SELECT 
+    SELECT
         P.Category,
         S.CalendarYear,
         S.CalendarQuarter,
@@ -269,24 +331,24 @@ WITH CategorySales AS (
         SUM(S.OrderQuantity) AS UnitsSold,
         SUM(S.SalesAmount) AS Revenue,
         COUNT(DISTINCT S.MonthNumberOfYear) AS MonthsCount
-    FROM vw_SalesWithDate AS S
-    JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+    FROM #SalesBase AS S
+    JOIN #ProductHierarchy AS P ON S.ProductKey = P.ProductKey
     GROUP BY P.Category, S.CalendarYear, S.CalendarQuarter
 )
-SELECT 
+SELECT
     Category,
     CalendarYear,
     CalendarQuarter,
     Orders,
     UnitsSold,
     CONCAT('$ ', FORMAT(Revenue, 'N2')) AS Revenue,
-    CASE 
-        WHEN LAG(MonthsCount) OVER (PARTITION BY Category, CalendarQuarter ORDER BY CalendarYear) < 3 THEN 'Not Comparable'
+    CASE
+        WHEN LAG(MonthsCount) OVER (PARTITION BY Category, CalendarQuarter ORDER BY CalendarYear) < @FullQuarterMonths THEN 'Not Comparable'
         WHEN LAG(Revenue) OVER (PARTITION BY Category, CalendarQuarter ORDER BY CalendarYear) IS NULL THEN 'N/A'
         ELSE CONCAT(
              FORMAT((Revenue - LAG(Revenue) OVER (PARTITION BY Category, CalendarQuarter ORDER BY CalendarYear)) * 100.0
              / NULLIF(LAG(Revenue) OVER (PARTITION BY Category, CalendarQuarter ORDER BY CalendarYear), 0), 'N2'), '%',
-            CASE WHEN MonthsCount < 3 THEN ' (Partial)' ELSE '' END)
+            CASE WHEN MonthsCount < @FullQuarterMonths THEN ' (Partial)' ELSE '' END)
     END AS YoYGrowth
 FROM CategorySales
 ORDER BY Category, CalendarYear, CalendarQuarter;
@@ -297,7 +359,7 @@ ORDER BY Category, CalendarYear, CalendarQuarter;
 
 -- Territory Performance Dashboard with Market Share
 WITH TerritoryMetrics AS (
-    SELECT 
+    SELECT
         T.SalesTerritoryRegion,
         T.SalesTerritoryCountry,
         T.SalesTerritoryGroup,
@@ -308,11 +370,11 @@ WITH TerritoryMetrics AS (
         SUM(S.Profit) AS TotalProfit,
         SUM(SUM(S.SalesAmount)) OVER (PARTITION BY S.CalendarYear) AS YearTotalRevenue,
         COUNT(DISTINCT S.MonthNumberOfYear) AS MonthsCount
-    FROM vw_SalesWithDate AS S
-    JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+    FROM #SalesBase AS S
+    JOIN #TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
     GROUP BY T.SalesTerritoryRegion, T.SalesTerritoryCountry, T.SalesTerritoryGroup, S.CalendarYear
 )
-SELECT 
+SELECT
     SalesTerritoryRegion,
     SalesTerritoryCountry,
     SalesTerritoryGroup,
@@ -324,13 +386,13 @@ SELECT
     FORMAT((TotalProfit * 100.0 / NULLIF(TotalRevenue, 0)), 'N2') + '%' AS ProfitMargin,
     FORMAT((TotalRevenue * 100.0 / YearTotalRevenue), 'N2') + '%' AS MarketShare,
     CONCAT('$ ', FORMAT((TotalRevenue * 1.0 / NULLIF(UniqueCustomers, 0)), 'N2')) AS RevenuePerCustomer,
-    CASE 
-        WHEN LAG(MonthsCount) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear) < 12 THEN 'Not Comparable'
+    CASE
+        WHEN LAG(MonthsCount) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear) < @FullYearMonths THEN 'Not Comparable'
         WHEN LAG(TotalRevenue) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear) IS NULL THEN 'N/A'
         ELSE CONCAT(
-            FORMAT(((TotalRevenue - LAG(TotalRevenue) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear))* 100.0
-            / NULLIF(LAG(TotalRevenue) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear), 0)), 'N2'),'%',
-            CASE WHEN MonthsCount < 12 THEN ' (Partial)'ELSE '' END)
+            FORMAT(((TotalRevenue - LAG(TotalRevenue) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear)) * 100.0
+            / NULLIF(LAG(TotalRevenue) OVER (PARTITION BY SalesTerritoryRegion ORDER BY CalendarYear), 0)), 'N2'), '%',
+            CASE WHEN MonthsCount < @FullYearMonths THEN ' (Partial)' ELSE '' END)
     END AS YoYGrowth
 FROM TerritoryMetrics
 ORDER BY SalesTerritoryGroup, CalendarYear, TotalRevenue DESC;
@@ -341,22 +403,22 @@ ORDER BY SalesTerritoryGroup, CalendarYear, TotalRevenue DESC;
 
 -- Promotion Effectiveness with Comparison
 WITH PromotionMetrics AS (
-    SELECT 
+    SELECT
         PR.EnglishPromotionName,
         PR.EnglishPromotionType,
         PR.EnglishPromotionCategory,
         PR.DiscountPct,
-        CASE WHEN PR.PromotionKey > 1 THEN 'With Promotion' ELSE 'No Promotion' END AS PromotionStatus,
+        CASE WHEN PR.PromotionKey > @NoPromotionKey THEN 'With Promotion' ELSE 'No Promotion' END AS PromotionStatus,
         COUNT(DISTINCT S.SalesOrderNumber) AS OrdersWithPromo,
         SUM(S.SalesAmount) AS RevenueWithPromo,
         SUM(S.Profit) AS ProfitWithPromo,
         AVG(S.OrderQuantity) AS AvgQuantityPerOrder
-    FROM vw_SalesWithDate AS S
+    FROM #SalesBase AS S
     JOIN DimPromotion AS PR ON S.PromotionKey = PR.PromotionKey
-    GROUP BY PR.EnglishPromotionName, PR.EnglishPromotionType, PR.EnglishPromotionCategory, PR.DiscountPct, 
-        CASE WHEN PR.PromotionKey > 1 THEN 'With Promotion' ELSE 'No Promotion' END
+    GROUP BY PR.EnglishPromotionName, PR.EnglishPromotionType, PR.EnglishPromotionCategory, PR.DiscountPct,
+        CASE WHEN PR.PromotionKey > @NoPromotionKey THEN 'With Promotion' ELSE 'No Promotion' END
 )
-SELECT 
+SELECT
     PromotionStatus,
     EnglishPromotionName,
     EnglishPromotionType,
@@ -376,7 +438,7 @@ ORDER BY PromotionStatus DESC, ProfitWithPromo DESC;
 --------------------------------------------------------------------------------
 
 -- Sales by Day of Week
-SELECT 
+SELECT
     DayNumberOfWeek,
     EnglishDayNameOfWeek,
     COUNT(DISTINCT SalesOrderNumber) AS TotalOrders,
@@ -384,50 +446,50 @@ SELECT
     CONCAT('$ ', FORMAT(AVG(SalesAmount), 'N2')) AS AvgOrderValue,
     FORMAT((SUM(SalesAmount) * 100.0 / SUM(SUM(SalesAmount)) OVER ()), 'N2') + '%' AS PercentOfTotal,
     FORMAT(((SUM(SalesAmount) - AVG(SUM(SalesAmount)) OVER ()) * 100.0 / AVG(SUM(SalesAmount)) OVER ()), 'N2') + '%' AS VsWeeklyAvg
-FROM vw_SalesWithDate
+FROM #SalesBase
 GROUP BY DayNumberOfWeek, EnglishDayNameOfWeek
 ORDER BY DayNumberOfWeek;
 
 -- Seasonal Analysis
-WITH SeasonalSales AS ( 
-    SELECT  
-        CalendarYear, 
-        Season, 
-        COUNT(DISTINCT SalesOrderNumber) AS Orders, 
-        SUM(SalesAmount) AS Revenue, 
+WITH SeasonalSales AS (
+    SELECT
+        CalendarYear,
+        Season,
+        COUNT(DISTINCT SalesOrderNumber) AS Orders,
+        SUM(SalesAmount) AS Revenue,
         SUM(Profit) AS Profit,
         COUNT(DISTINCT MonthNumberOfYear) AS MonthsCount
-    FROM vw_SalesWithDate
+    FROM #SalesBase
     GROUP BY CalendarYear, Season
-) 
-SELECT  
-    CalendarYear, 
-    Season, 
-    FORMAT(Orders, 'N0') AS TotalOrders, 
-    CONCAT('$ ', FORMAT(Revenue, 'N2')) AS SeasonalRevenue, 
-    CONCAT('$ ', FORMAT(Profit, 'N2')) AS SeasonalProfit, 
-    FORMAT((Profit * 100.0 / NULLIF(Revenue, 0)), 'N2') + '%' AS ProfitMargin, 
-    CASE 
-        WHEN MonthsCount < 3 
+)
+SELECT
+    CalendarYear,
+    Season,
+    FORMAT(Orders, 'N0') AS TotalOrders,
+    CONCAT('$ ', FORMAT(Revenue, 'N2')) AS SeasonalRevenue,
+    CONCAT('$ ', FORMAT(Profit, 'N2')) AS SeasonalProfit,
+    FORMAT((Profit * 100.0 / NULLIF(Revenue, 0)), 'N2') + '%' AS ProfitMargin,
+    CASE
+        WHEN MonthsCount < @FullQuarterMonths
         THEN FORMAT((Revenue * 100.0 / SUM(Revenue) OVER (PARTITION BY CalendarYear)), 'N2') + '% *'
         ELSE FORMAT((Revenue * 100.0 / SUM(Revenue) OVER (PARTITION BY CalendarYear)), 'N2') + '%'
     END AS PercentOfYear,
-    CASE 
-        WHEN LAG(MonthsCount) OVER (PARTITION BY Season ORDER BY CalendarYear) < 3 THEN 'Not Comparable'
+    CASE
+        WHEN LAG(MonthsCount) OVER (PARTITION BY Season ORDER BY CalendarYear) < @FullQuarterMonths THEN 'Not Comparable'
         WHEN LAG(Revenue) OVER (PARTITION BY Season ORDER BY CalendarYear) IS NULL THEN 'N/A'
         ELSE CONCAT(
             FORMAT(
                 ((Revenue - LAG(Revenue) OVER (PARTITION BY Season ORDER BY CalendarYear))
-                * 100.0 / NULLIF(LAG(Revenue) OVER (PARTITION BY Season ORDER BY CalendarYear), 0)), 'N2'),'%',
-            CASE  WHEN MonthsCount < 3 THEN ' (Partial)' ELSE ''  END)
+                * 100.0 / NULLIF(LAG(Revenue) OVER (PARTITION BY Season ORDER BY CalendarYear), 0)), 'N2'), '%',
+            CASE WHEN MonthsCount < @FullQuarterMonths THEN ' (Partial)' ELSE '' END)
     END AS YoYGrowth
-FROM SeasonalSales 
-ORDER BY CalendarYear,  
-    CASE Season  
-        WHEN 'Winter' THEN 1  
-        WHEN 'Spring' THEN 2  
-        WHEN 'Summer' THEN 3  
-        WHEN 'Fall' THEN 4  
+FROM SeasonalSales
+ORDER BY CalendarYear,
+    CASE Season
+        WHEN 'Winter' THEN 1
+        WHEN 'Spring' THEN 2
+        WHEN 'Summer' THEN 3
+        WHEN 'Fall' THEN 4
     END;
 
 --------------------------------------------------------------------------------
@@ -435,7 +497,7 @@ ORDER BY CalendarYear,
 --------------------------------------------------------------------------------
 
 -- Shipping Performance & Freight Cost Analysis
-SELECT 
+SELECT
     T.SalesTerritoryRegion,
     S.CalendarYear,
     S.CalendarQuarter,
@@ -443,8 +505,8 @@ SELECT
     CONCAT('$ ', FORMAT(SUM(S.Freight), 'N2')) AS TotalFreightCost,
     CONCAT('$ ', FORMAT(AVG(S.Freight), 'N2')) AS AvgFreightPerOrder,
     CONCAT('$ ', FORMAT(SUM(S.SalesAmount), 'N2')) AS TotalRevenue
-FROM vw_SalesWithDate AS S
-JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+FROM #SalesBase AS S
+JOIN #TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
 GROUP BY T.SalesTerritoryRegion, S.CalendarYear, S.CalendarQuarter
 ORDER BY S.CalendarYear, S.CalendarQuarter, TotalRevenue DESC;
 
@@ -453,19 +515,18 @@ ORDER BY S.CalendarYear, S.CalendarQuarter, TotalRevenue DESC;
 --------------------------------------------------------------------------------
 
 -- Sales by Currency with Exchange Impact
-SELECT 
+SELECT
     CUR.CurrencyName,
     S.CalendarYear,
     COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
     CONCAT('$ ', FORMAT(ROUND(SUM(S.SalesAmount), 2), 'N2')) AS RevenueInLocalCurrency,
     ROUND(AVG(CR.EndOfDayRate), 4) AS AvgExchangeRate,
     CONCAT('$ ', FORMAT(ROUND(SUM(S.SalesAmount * CR.EndOfDayRate), 2), 'N2')) AS RevenueInUSD,
-    CAST((SUM(S.SalesAmount * CR.EndOfDayRate) - SUM(S.SalesAmount))/SUM(S.SalesAmount)*100 AS DECIMAL(5,2)) AS ExchangeImpactPct,
-    ROUND(MAX(CR.EndOfDayRate), 4) AS MaxExchangeRate
-    ,
-ROUND(MIN(CR.EndOfDayRate), 4) AS MinExchangeRate,
-ROUND(STDEV(CR.EndOfDayRate), 4) AS ExchangeRateVolatility
-FROM vw_SalesWithDate AS S
+    CAST((SUM(S.SalesAmount * CR.EndOfDayRate) - SUM(S.SalesAmount)) / SUM(S.SalesAmount) * 100 AS DECIMAL(5,2)) AS ExchangeImpactPct,
+    ROUND(MAX(CR.EndOfDayRate), 4) AS MaxExchangeRate,
+    ROUND(MIN(CR.EndOfDayRate), 4) AS MinExchangeRate,
+    ROUND(STDEV(CR.EndOfDayRate), 4) AS ExchangeRateVolatility
+FROM #SalesBase AS S
 JOIN DimCurrency AS CUR ON S.CurrencyKey = CUR.CurrencyKey
 JOIN FactCurrencyRate AS CR ON S.CurrencyKey = CR.CurrencyKey AND S.OrderDateKey = CR.DateKey
 GROUP BY CUR.CurrencyName, S.CalendarYear
@@ -490,8 +551,8 @@ SELECT
     CONCAT('$ ', FORMAT(AVG(S.SalesAmount), 'N2')) AS AvgOrderValue,
     CONCAT('$ ', FORMAT((SUM(S.SalesAmount) / COUNT(DISTINCT C.CustomerKey)), 'N2')) AS RevenuePerCustomer,
     FORMAT((COUNT(DISTINCT S.SalesOrderNumber) * 1.0 / COUNT(DISTINCT C.CustomerKey)), 'N2') AS OrdersPerCustomer
-FROM vw_CustomerGeography AS C
-JOIN vw_SalesWithDate AS S ON C.CustomerKey = S.CustomerKey
+FROM #CustomerGeo AS C
+JOIN #SalesBase AS S ON C.CustomerKey = S.CustomerKey
 GROUP BY C.CustomerKey, C.Gender, C.MaritalStatus, C.IncomeRange, C.AgeGroup, C.EnglishEducation, C.EnglishOccupation
 ORDER BY SUM(S.SalesAmount) DESC;
 
@@ -509,8 +570,8 @@ WITH GeographySales AS (
         COUNT(DISTINCT S.SalesOrderNumber) AS TotalOrders,
         SUM(S.SalesAmount) AS TotalRevenue,
         SUM(S.Profit) AS TotalProfit
-    FROM vw_SalesWithDate AS S
-    JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
+    FROM #SalesBase AS S
+    JOIN #CustomerGeo AS C ON S.CustomerKey = C.CustomerKey
     GROUP BY C.Country, C.State, C.City
 ),
 CityRankings AS (
@@ -531,7 +592,7 @@ SELECT
     FORMAT((TotalProfit * 100.0 / NULLIF(TotalRevenue, 0)), 'N2') + '%' AS ProfitMargin,
     CONCAT('$ ', FORMAT((TotalRevenue / TotalCustomers), 'N2')) AS RevenuePerCustomer
 FROM CityRankings
-WHERE CityRank <= 10
+WHERE CityRank <= @TopCitiesPerCountry
 ORDER BY Country, CityRank;
 
 --------------------------------------------------------------------------------
@@ -548,15 +609,15 @@ WITH ProductPairs AS (
     JOIN FactInternetSales AS F2 ON F1.SalesOrderNumber = F2.SalesOrderNumber AND F1.ProductKey < F2.ProductKey
     GROUP BY F1.ProductKey, F2.ProductKey
 )
-SELECT TOP 50
+SELECT TOP (@TopProductPairs)
     P1.EnglishProductName AS Product1Name,
     P2.EnglishProductName AS Product2Name,
     PP.TimesBoughtTogether,
     FORMAT((PP.TimesBoughtTogether * 100.0
-    /(SELECT COUNT(DISTINCT SalesOrderNumber) FROM FactInternetSales)), 'N2') + '%' AS SupportPercentage
+    / (SELECT COUNT(DISTINCT SalesOrderNumber) FROM FactInternetSales)), 'N2') + '%' AS SupportPercentage
 FROM ProductPairs AS PP
-JOIN vw_ProductHierarchy AS P1 ON PP.Product1 = P1.ProductKey
-JOIN vw_ProductHierarchy AS P2 ON PP.Product2 = P2.ProductKey
+JOIN #ProductHierarchy AS P1 ON PP.Product1 = P1.ProductKey
+JOIN #ProductHierarchy AS P2 ON PP.Product2 = P2.ProductKey
 ORDER BY PP.TimesBoughtTogether DESC;
 
 --------------------------------------------------------------------------------
@@ -572,8 +633,8 @@ WITH CustomerOrders AS (
         S.SalesOrderNumber,
         S.SalesAmount,
         LAG(S.FullDateAlternateKey) OVER (PARTITION BY C.CustomerKey ORDER BY S.FullDateAlternateKey) AS PrevOrderDate
-FROM vw_SalesWithDate AS S
-JOIN vw_CustomerGeography AS C ON S.CustomerKey = C.CustomerKey
+    FROM #SalesBase AS S
+    JOIN #CustomerGeo AS C ON S.CustomerKey = C.CustomerKey
 ),
 CustomerMetrics AS (
     SELECT
@@ -593,12 +654,12 @@ SELECT
     ISNULL(AvgDaysBetweenOrders, 0) AS AvgDaysBetweenPurchases,
     CASE
         WHEN AvgDaysBetweenOrders > 0 AND CustomerLifespanDays > 0
-        THEN CONCAT('$ ', FORMAT((TotalRevenue * 365.0 / CustomerLifespanDays) * 3, 'N2'))
+        THEN CONCAT('$ ', FORMAT((TotalRevenue * 365.0 / CustomerLifespanDays) * @CLVProjectionYears, 'N2'))
         ELSE 'N/A'
     END AS Projected3YearCLV,
     CASE
-        WHEN AvgDaysBetweenOrders <= 30 THEN 'High Frequency'
-        WHEN AvgDaysBetweenOrders <= 90 THEN 'Medium Frequency'
+        WHEN AvgDaysBetweenOrders <= @HighFrequencyDays THEN 'High Frequency'
+        WHEN AvgDaysBetweenOrders <= @MediumFrequencyDays THEN 'Medium Frequency'
         ELSE 'Low Frequency'
     END AS PurchaseFrequency
 FROM CustomerMetrics
@@ -613,8 +674,8 @@ WITH MonthlySales AS (
         SUM(SalesAmount) AS MonthlyRevenue,
         ROW_NUMBER() OVER (ORDER BY CalendarYear, MonthNumberOfYear) AS MonthIndex,
         COUNT(SalesAmount) AS SalesCount
-FROM vw_SalesWithDate
-GROUP BY CalendarYear, MonthNumberOfYear
+    FROM #SalesBase
+    GROUP BY CalendarYear, MonthNumberOfYear
 )
 SELECT
     CalendarYear,
@@ -623,7 +684,7 @@ SELECT
     CONCAT('$ ', FORMAT(AVG(MonthlyRevenue) OVER (ORDER BY MonthIndex ROWS BETWEEN 2 PRECEDING AND CURRENT ROW), 'N2')) AS ThreeMonthMovingAvg,
     CASE
         WHEN LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex) IS NULL THEN 'N/A'
-        WHEN LAG(SalesCount, 3) OVER (ORDER BY MonthIndex) < 15 THEN 'Not Comparable'
+        WHEN LAG(SalesCount, 3) OVER (ORDER BY MonthIndex) < @MinComparableSalesCount THEN 'Not Comparable'
         ELSE CONCAT(FORMAT((MonthlyRevenue - LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex)) * 100.0
             / NULLIF(LAG(MonthlyRevenue, 3) OVER (ORDER BY MonthIndex), 0), 'N2'), '%')
     END AS QuarterOverQuarterGrowth
@@ -645,8 +706,16 @@ SELECT
     CONCAT('$ ', FORMAT(SUM(S.Profit), 'N2')) AS Profit,
     FORMAT((SUM(S.Profit) * 100.0 / NULLIF(SUM(S.SalesAmount), 0)), 'N2') + '%' AS ProfitMargin,
     RANK() OVER (PARTITION BY S.CalendarYear ORDER BY SUM(S.Profit) DESC) AS ProfitRank
-FROM vw_SalesWithDate AS S
-JOIN vw_ProductHierarchy AS P ON S.ProductKey = P.ProductKey
-JOIN vw_TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
+FROM #SalesBase AS S
+JOIN #ProductHierarchy AS P ON S.ProductKey = P.ProductKey
+JOIN #TerritoryInfo AS T ON S.SalesTerritoryKey = T.SalesTerritoryKey
 GROUP BY P.Category, T.SalesTerritoryRegion, S.CalendarYear
 ORDER BY S.CalendarYear DESC, SUM(S.Profit) DESC;
+
+--------------------------------------------------------------------------------
+-- 16. CLEANUP
+--------------------------------------------------------------------------------
+DROP TABLE IF EXISTS #SalesBase;
+DROP TABLE IF EXISTS #CustomerGeo;
+DROP TABLE IF EXISTS #ProductHierarchy;
+DROP TABLE IF EXISTS #TerritoryInfo;
